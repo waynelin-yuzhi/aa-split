@@ -1616,6 +1616,8 @@ async function boot(){
   const hp = new URLSearchParams((location.hash||"").replace(/^#/,""));
   const gid = qp.get("g") || hp.get("g");
   const tok = qp.get("t") || hp.get("t");
+  // 讀完參數立刻把網址清乾淨：網址列不再殘留 ?g=...，避免之後複製網址列誤把某帳本當「App 連結」分享出去
+  if(location.search || location.hash) history.replaceState(null, "", location.pathname);
   if(gid){
     $("#title").textContent = "載入中…";
     $("#main").innerHTML = loadingHTML("載入帳本中…");
