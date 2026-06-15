@@ -64,7 +64,6 @@
     font-size:14px; cursor:pointer; user-select:none;}
   .chip.on{background:var(--accent); color:#0c1410; border-color:var(--accent);}
   .chip.me{border-color:var(--accent);}
-  .chip.addchip{color:var(--accent); border-style:dashed; cursor:pointer;}
   .chip .x{color:var(--faint); font-weight:700;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
   .empty{text-align:center; color:var(--muted); padding:48px 20px;}
@@ -166,6 +165,16 @@
   .avatar-lg{width:48px; height:48px; border-radius:50%; flex:0 0 auto; background:var(--panel2) center/cover no-repeat;
     display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px;}
   .pm-name{font-size:17px; font-weight:700;}
+  /* 成員：壓成一條可點的小框，點開懸浮視窗管理 */
+  .memrow{display:flex; align-items:center; gap:10px; cursor:pointer;}
+  .memrow-label{flex:0 0 auto; background:var(--panel2); border:1px solid var(--line); border-radius:999px;
+    padding:5px 12px; font-size:13px; font-weight:650; color:var(--ink);}
+  .memrow-names{flex:1 1 auto; min-width:0; color:var(--muted); font-size:14px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .memrow-chev{flex:0 0 auto; color:var(--faint); font-size:22px; line-height:1; margin-left:2px;}
+  .mm-add{display:flex; gap:8px;}
+  .mm-add input{flex:1 1 auto; min-width:0;}
+  .mm-add .btn{flex:0 0 auto; width:auto;}
   .fab-center{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--accent); color:#0c1410;
     font-weight:700; font-size:16px; border:0; border-radius:999px; padding:14px 30px; cursor:pointer; z-index:40;
     box-shadow:0 10px 28px rgba(0,0,0,.45);}
@@ -201,6 +210,22 @@
     <button class="btn block" onclick="saveProfile()">儲存</button>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeProfile()">關閉</button>
+  </div>
+</div>
+
+<div id="membersModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div><div class="pm-name">成員</div><div class="faint" id="mmCount"></div></div>
+    </div>
+    <div class="chips" id="mmList" style="margin-bottom:14px;"></div>
+    <div class="mm-add">
+      <input id="mmInput" placeholder="輸入名字新增成員" onkeydown="if(event.key==='Enter'){mmAdd();}">
+      <button class="btn" onclick="mmAdd()">加入</button>
+    </div>
+    <div class="faint" style="margin-top:8px;">點名字可改名、✕ 可移除。想找朋友用 LINE 一起記，回上一頁按「邀請」。</div>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="closeMembers()">完成</button>
   </div>
 </div>
 
@@ -578,12 +603,10 @@ function renderEdit(isNew){
       <button class="qbtn" onclick="quickServiceCharge()" ${items.length===0?'disabled style="opacity:.4"':''}><span class="qi">％</span>服務費</button>
     </div>
 
-    <div class="card">
-      <div class="sect-title" style="margin-bottom:10px;">成員（${m.length}）</div>
-      <div class="chips" id="memberChips">
-        ${m.map(p=>`<span class="chip mchip ${p.uid===MY_UID?'me':''}"><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${p.uid===MY_UID?'（我）':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")}
-        <span class="chip addchip" onclick="addMemberPrompt()">＋ 加人</span>
-      </div>
+    <div class="card memrow" onclick="openMembers()">
+      <span class="memrow-label">成員 ${m.length}</span>
+      <span class="memrow-names">${m.length ? m.map(p=>esc(p.name)+(p.uid===MY_UID?'（我）':'')).join('・') : '還沒有成員，點此新增'}</span>
+      <span class="memrow-chev">›</span>
     </div>
 
     <div class="card">
@@ -704,16 +727,6 @@ function shareInvite(){
   } else fallbackCopy(link);
 }
 
-function addMember(){
-  const inp = $("#memberInput");
-  const name = inp.value.trim();
-  if(!name) return;
-  if(current.members.some(p=>p.name===name)){ toast("已經有這個名字了"); inp.value=""; return; }
-  current.members.push({id:uid(), name});
-  persistCurrent();
-  renderEdit(false);
-  $("#memberInput").focus();
-}
 function renameMember(id, ev){
   ev.stopPropagation();
   const p = current.members.find(m=>m.id===id); if(!p) return;
@@ -721,16 +734,7 @@ function renameMember(id, ev){
   if(name===null) return;
   const t = name.trim(); if(!t) return;
   if(current.members.some(m=>m.id!==id && m.name===t)){ toast("已經有這個名字了"); return; }
-  p.name = t; persistCurrent(); renderEdit(false);
-}
-function addMemberPrompt(){
-  const name = prompt("成員名字");
-  if(name===null) return;
-  const t = name.trim(); if(!t) return;
-  if(current.members.some(p=>p.name===t)){ toast("已經有這個名字了"); return; }
-  current.members.push({id:uid(), name:t});
-  persistCurrent();
-  renderEdit(false);
+  p.name = t; persistCurrent(); refreshMembersUI();
 }
 function removeMember(id, ev){
   ev.stopPropagation();
@@ -742,7 +746,33 @@ function removeMember(id, ev){
     it.sharerIds = (it.sharerIds||[]).filter(s=>s!==id);
   });
   persistCurrent();
-  renderEdit(false);
+  refreshMembersUI();
+}
+/* 成員懸浮視窗：點小框開、在裡面加/改/刪，關閉時刷新底下小框 */
+function openMembers(){
+  renderMembersModal();
+  $("#membersModal").classList.remove("hidden");
+  if(!current.members.length){ const i=$("#mmInput"); if(i) setTimeout(()=>i.focus(), 60); }
+}
+function closeMembers(){ $("#membersModal").classList.add("hidden"); if(view==="edit") renderEdit(false); }
+function renderMembersModal(){
+  const m = current.members || [];
+  $("#mmCount").textContent = `${m.length} 名`;
+  $("#mmList").innerHTML = m.length
+    ? m.map(p=>`<span class="chip mchip ${p.uid===MY_UID?'me':''}"><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${p.uid===MY_UID?'（我）':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")
+    : `<span class="faint">還沒有成員，在下面輸入名字加入。</span>`;
+}
+function mmAdd(){
+  const inp = $("#mmInput"); const t = (inp.value||"").trim(); if(!t) return;
+  if(current.members.some(p=>p.name===t)){ toast("已經有這個名字了"); inp.value=""; return; }
+  current.members.push({id:uid(), name:t});
+  persistCurrent();
+  inp.value=""; renderMembersModal(); inp.focus();
+}
+// 成員改動後：底下小框（編輯頁）與懸浮視窗都同步
+function refreshMembersUI(){
+  if(view==="edit") renderEdit(false);
+  if(!$("#membersModal").classList.contains("hidden")) renderMembersModal();
 }
 async function deleteGathering(){
   if(!confirm("確定刪除這場聚會？無法復原。")) return;
