@@ -71,6 +71,11 @@
   .mdot.on{background:var(--accent); border-color:var(--accent);}
   .mm-legend{display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px;}
   .mm-legend .lg{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted);}
+  .histrow{display:flex; gap:10px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:13.5px;}
+  .histrow:last-child{border-bottom:0;}
+  .histrow .ht{flex:0 0 auto; color:var(--muted); width:80px;}
+  .histrow .hb{flex:1; min-width:0; color:var(--ink);}
+  .histrow .hb b{color:var(--accent); font-weight:650;}
   .chip .x{color:var(--faint); font-weight:700;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
   .empty{text-align:center; color:var(--muted); padding:48px 20px;}
@@ -245,6 +250,17 @@
   </div>
 </div>
 
+<div id="historyModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div><div class="pm-name">編輯紀錄</div><div class="faint">這本帳本被改過什麼、誰改的</div></div>
+    </div>
+    <div id="histList" style="max-height:60vh;overflow:auto;"></div>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="closeHistory()">關閉</button>
+  </div>
+</div>
+
 <script>
 "use strict";
 
@@ -402,7 +418,8 @@ function rowToGathering(row, token){
     title: row.title || "", date: row.event_date || "",
     currency: row.currency || "TWD", status: row.status || "open",
     members: row.participants || [], items: row.items || [],
-    adjustments: row.adjustments || [], settlements: row.settlements || []
+    adjustments: row.adjustments || [], settlements: row.settlements || [],
+    history: row.history || []
   };
 }
 
@@ -431,7 +448,8 @@ const Store = {
   async save(g){
     const row = await rpc("g_save", { p_id:g.id, p_access_token: ACCESS_TOKEN, p_title:g.title||null,
       p_event_date:g.date||null, p_currency:g.currency||"TWD", p_status:g.status||"open",
-      p_participants:g.members||[], p_items:g.items||[], p_adjustments:g.adjustments||[], p_settlements:g.settlements||[] });
+      p_participants:g.members||[], p_items:g.items||[], p_adjustments:g.adjustments||[], p_settlements:g.settlements||[],
+      p_history:g.history||[] });
     return rowToGathering(row);
   },
   async get(id, token){   // 成員可讀；或持邀請 token 可讀（尚未加入）
@@ -472,6 +490,15 @@ const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String
 const nowLocal = () => { const d=new Date(), p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 // 顯示用：YYYY-MM-DDTHH:mm → M/D HH:mm
 const fmtAt = at => { if(!at) return ''; const [d,t]=String(at).split('T'); if(!d) return ''; const [,mo,da]=d.split('-'); return `${+mo}/${+da}${t?(' '+t):''}`; };
+// 編輯歷史：時間戳記字串 → M/D HH:mm
+const fmtTs = ms => { const d=new Date(ms), p=n=>String(n).padStart(2,'0'); return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+// 記一筆編輯歷史到目前帳本（時間＋是誰＋做了什麼）；由呼叫端隨後 persistCurrent() 存到雲端
+function logHistory(action){
+  if(!current) return;
+  if(!Array.isArray(current.history)) current.history = [];
+  current.history.push({ ts: Date.now(), by: MY_UID||null, byName: MY_NAME||"?", action });
+  if(current.history.length > 200) current.history = current.history.slice(-200);
+}
 
 // UI 線條圖示（薄荷色、圓角，呼應品牌收據+勾的調性；用 currentColor 繼承按鈕色）
 const ICONS = {
@@ -650,7 +677,9 @@ async function newGathering(){
   try{ created = await Store.create(g); }
   catch(e){ console.error(e); toast("建立失敗，檢查網路"); return; }
   current = created;
-  if(applyProfileToCurrent()) persistCurrent();
+  applyProfileToCurrent();
+  logHistory("建立了這本帳本");
+  persistCurrent();
   subscribeRealtime(current.id);
   renderEdit(true);
 }
@@ -715,7 +744,7 @@ function renderEdit(isNew){
       <button class="btn ghost" onclick="finishEdit()">✓ 完成</button>
       <button class="btn danger" onclick="deleteGathering()">刪除</button>
     </div>
-    <div class="faint" style="text-align:center;margin-top:10px;">編輯內容會自動儲存到雲端</div>
+    <div class="faint" style="text-align:center;margin-top:10px;">編輯內容會自動儲存到雲端 ・ <a onclick="openHistory()" style="color:var(--accent);cursor:pointer;text-decoration:underline;">編輯紀錄${(current.history&&current.history.length)?`（${current.history.length}）`:''}</a></div>
     <div style="height:84px;"></div>
 
     <button class="fab" onclick="fabAdd()" aria-label="新增帳目">＋</button>
@@ -833,17 +862,19 @@ function renameMember(id, ev){
   if(name===null) return;
   const t = name.trim(); if(!t) return;
   if(current.members.some(m=>m.id!==id && m.name===t)){ toast("已經有這個名字了"); return; }
-  p.name = t; persistCurrent(); refreshMembersUI();
+  const old = p.name; p.name = t; logHistory(`改名「${old}」→「${t}」`); persistCurrent(); refreshMembersUI();
 }
 function removeMember(id, ev){
   ev.stopPropagation();
   const p = current.members.find(m=>m.id===id);
   if(!confirm(`移除成員「${p?p.name:""}」？他分攤或付款的項目會一併調整。`)) return;
+  const nm = p?p.name:"";
   current.members = current.members.filter(p=>p.id!==id);
   current.items.forEach(it=>{
     if(it.payerId===id) it.payerId=null;
     it.sharerIds = (it.sharerIds||[]).filter(s=>s!==id);
   });
+  logHistory(`移除成員「${nm}」`);
   persistCurrent();
   refreshMembersUI();
 }
@@ -872,6 +903,7 @@ function mmAdd(){
   const inp = $("#mmInput"); const t = (inp.value||"").trim(); if(!t) return;
   if(current.members.some(p=>p.name===t)){ toast("已經有這個名字了"); inp.value=""; return; }
   current.members.push({id:uid(), name:t});
+  logHistory(`加入成員「${t}」`);
   persistCurrent();
   inp.value=""; renderMembersModal(); inp.focus();
 }
@@ -879,6 +911,15 @@ function mmAdd(){
 function refreshMembersUI(){
   if(view==="edit") renderEdit(false);
   if(!$("#membersModal").classList.contains("hidden")) renderMembersModal();
+}
+/* 編輯歷史懸浮視窗 */
+function openHistory(){ renderHistory(); $("#historyModal").classList.remove("hidden"); }
+function closeHistory(){ $("#historyModal").classList.add("hidden"); }
+function renderHistory(){
+  const h = (current && Array.isArray(current.history)) ? current.history : [];
+  $("#histList").innerHTML = h.length
+    ? h.slice().reverse().map(e=>`<div class="histrow"><div class="ht">${esc(fmtTs(e.ts))}</div><div class="hb"><b>${esc(e.byName||'?')}</b> ${esc(e.action||'')}</div></div>`).join("")
+    : `<div class="faint" style="padding:8px 2px;">還沒有編輯紀錄。</div>`;
 }
 async function deleteGathering(){
   if(!confirm("確定刪除這本帳本？無法復原。")) return;
@@ -1004,13 +1045,16 @@ function saveItem(){
   const isNew = d._isNew; delete d._isNew;
   const i = current.items.findIndex(x=>x.id===d.id);
   if(i>=0) current.items[i]=d; else current.items.push(d);
+  logHistory(isNew ? `新增「${d.name} ${money(d.amount)}」` : `編輯「${d.name}」`);
   editDraftItem=null;
   persistCurrent();
   renderEdit(false);
 }
 function deleteItem(){
   if(!confirm(`確定刪除「${editDraftItem.name||"這筆"}」？`)) return;
+  const nm = editDraftItem.name||"這筆";
   current.items = current.items.filter(x=>x.id!==editDraftItem.id);
+  logHistory(`刪除「${nm}」`);
   editDraftItem=null;
   persistCurrent();
   renderEdit(false);
@@ -1033,6 +1077,7 @@ function quickServiceCharge(){
   current.adjustments = current.adjustments || [];
   if(current.adjustments.some(a=>a.name==='服務費')){ toast('已經有服務費了'); return; }
   current.adjustments.push({id:uid(), name:'服務費', kind:'pct', value:10, sign:1});
+  logHistory('加上 服務費 10%');
   persistCurrent(); renderEdit(false);
 }
 function startAddAdj(){ editDraftAdj = {id:uid(), name:'', kind:'pct', value:'', sign:1, _isNew:true}; renderAdjForm(); }
@@ -1083,12 +1128,16 @@ function saveAdj(){
   const a = {id:d.id, name:d.name, kind:d.kind, value:d.value, sign:d.sign};
   current.adjustments = current.adjustments || [];
   const i = current.adjustments.findIndex(x=>x.id===d.id);
+  const wasNew = d._isNew;
   if(i>=0) current.adjustments[i]=a; else current.adjustments.push(a);
+  logHistory(`${wasNew?'新增':'編輯'}調整「${a.name}」`);
   editDraftAdj=null; persistCurrent(); renderEdit(false);
 }
 function deleteAdj(){
   if(!confirm(`確定刪除「${editDraftAdj.name||"這筆調整"}」？`)) return;
+  const nm = editDraftAdj.name||"這筆調整";
   current.adjustments = (current.adjustments||[]).filter(x=>x.id!==editDraftAdj.id);
+  logHistory(`刪除調整「${nm}」`);
   editDraftAdj=null; persistCurrent(); renderEdit(false);
 }
 
@@ -1212,15 +1261,16 @@ function settleMap(){
   return current.settlements;
 }
 function toggleSettle(from, to){   // 付款人：標記/取消「已付」（取消連帶清掉確認）
-  const map = settleMap(), k = from+">"+to;
-  if(map[k] && map[k].paid) delete map[k];
-  else map[k] = {paid:true, confirmed:false};
+  const map = settleMap(), k = from+">"+to, nm = (lastResult&&lastResult.nameOf)||{};
+  if(map[k] && map[k].paid){ delete map[k]; logHistory(`改回未付：${nm[from]||'?'}→${nm[to]||'?'}`); }
+  else { map[k] = {paid:true, confirmed:false}; logHistory(`標記已付：${nm[from]||'?'}→${nm[to]||'?'}`); }
   persistCurrent(); renderResult();
 }
 function toggleConfirm(from, to){  // 收款人：確認收到 / 取消確認
-  const map = settleMap(), k = from+">"+to;
+  const map = settleMap(), k = from+">"+to, nm = (lastResult&&lastResult.nameOf)||{};
   if(!map[k] || !map[k].paid) return;
   map[k].confirmed = !map[k].confirmed;
+  logHistory(`${map[k].confirmed?'確認收到':'取消確認'}：${nm[from]||'?'}→${nm[to]||'?'}`);
   persistCurrent(); renderResult();
 }
 function remindReceipt(from, to, amount){   // 一鍵在 LINE 提醒收款人確認（使用者自己選對象送出）
@@ -1354,7 +1404,7 @@ async function acceptJoin(){
   $("#main").innerHTML = loadingHTML("加入中…");
   try{ current = _invite.slug ? await Store.joinBySlug(_invite.slug) : await Store.join(_invite.id, _invite.token); }
   catch(e){ console.error(e); toast("加入失敗"); return renderList(); }
-  finishJoin();
+  finishJoin("加入了這本帳本");
 }
 async function claimMember(memberId){
   if(!_invite || !_invite.slug) return;
@@ -1368,12 +1418,15 @@ async function claimMember(memberId){
     } else toast("認領失敗");
     return renderList();
   }
-  finishJoin();
+  const cm = current.members.find(m=>m.id===memberId);
+  finishJoin(`認領了名字「${cm?cm.name:''}」`);
 }
-function finishJoin(){
+function finishJoin(action){
   history.replaceState(null, "", location.pathname);   // 清掉邀請參數
   _invite = null;
-  if(applyProfileToCurrent()) persistCurrent();
+  applyProfileToCurrent();
+  if(action) logHistory(action);
+  persistCurrent();
   subscribeRealtime(current.id);
   renderEdit(false);
 }
