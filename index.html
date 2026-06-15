@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
-<title>AA 分帳</title>
+<title>算一下 Check Plz</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
   :root{
@@ -114,7 +114,7 @@
 <div class="app">
   <header class="bar">
     <button id="backBtn" class="iconbtn hidden" aria-label="返回">‹</button>
-    <h1 id="title">AA 分帳</h1>
+    <h1 id="title">算一下</h1>
     <button id="addGatheringBtn" class="btn sm">＋ 新聚會</button>
   </header>
   <main id="main"></main>
@@ -288,7 +288,7 @@ function toast(msg){
 function renderList(){
   view = "list";
   current = null;
-  $("#title").textContent = "AA 分帳";
+  $("#title").textContent = "算一下";
   $("#backBtn").classList.add("hidden");
   $("#addGatheringBtn").classList.remove("hidden");
 
@@ -698,7 +698,7 @@ function renderResult(){
 function resultText(){
   const r = lastResult;
   const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
-  let s = `🧾 ${current.title||"AA 分帳"}（${current.date||""}）\n`;
+  let s = `🧾 ${current.title||"算一下"}（${current.date||""}）\n`;
   if(r.adjustment){
     let bits = r.adjustments.map(a=>`${a.sign<0?'−':'+'}${a.kind==='pct'?a.value+'%':money(a.value)} ${a.name}`).join("、");
     s += `小計 ${money(r.subtotal)}（${bits}）→ 總額 ${money(r.total)}・${current.members.length} 人\n\n`;
