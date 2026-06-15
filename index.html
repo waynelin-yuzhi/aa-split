@@ -116,6 +116,9 @@
   .recon{margin-top:12px; font-size:13px; border-radius:10px; padding:9px 12px; text-align:center; font-weight:600;}
   .recon.ok{color:var(--accent); background:rgba(125,211,168,.1);}
   .recon.bad{color:var(--warn); background:rgba(240,168,104,.12);}
+  .spinner{width:34px; height:34px; border-radius:50%; border:3px solid var(--line);
+    border-top-color:var(--accent); animation:spin .8s linear infinite; margin:0 auto 14px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -343,7 +346,7 @@ function toast(msg){
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(t._tm); t._tm = setTimeout(()=>t.classList.remove("show"), 1800);
 }
-const loadingHTML = (msg) => `<div class="empty"><div class="big">⏳</div><div>${msg||"載入中…"}</div></div>`;
+const loadingHTML = (msg) => `<div class="empty"><div class="spinner"></div><div class="muted">${msg||"載入中…"}</div></div>`;
 
 /* =========================================================================
  * 畫面：聚會列表（我有份的，從雲端依身分取得）
@@ -434,7 +437,7 @@ function renderEdit(isNew){
     <div class="card">
       <div class="sect-title">成員（${m.length}）</div>
       <div class="chips" id="memberChips">
-        ${m.map(p=>`<span class="chip">${esc(p.name)} <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")}
+        ${m.map(p=>`<span class="chip"><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${p.uid?' <span class="faint" style="font-size:11px;">·已加入</span>':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")}
         ${m.length===0?'<span class="faint">先加入分帳的人</span>':''}
       </div>
       <div class="spacer"></div>
@@ -578,8 +581,19 @@ function addMember(){
   renderEdit(false);
   $("#memberInput").focus();
 }
+function renameMember(id, ev){
+  ev.stopPropagation();
+  const p = current.members.find(m=>m.id===id); if(!p) return;
+  const name = prompt("改名字", p.name);
+  if(name===null) return;
+  const t = name.trim(); if(!t) return;
+  if(current.members.some(m=>m.id!==id && m.name===t)){ toast("已經有這個名字了"); return; }
+  p.name = t; persistCurrent(); renderEdit(false);
+}
 function removeMember(id, ev){
   ev.stopPropagation();
+  const p = current.members.find(m=>m.id===id);
+  if(!confirm(`移除成員「${p?p.name:""}」？他分攤或付款的項目會一併調整。`)) return;
   current.members = current.members.filter(p=>p.id!==id);
   current.items.forEach(it=>{
     if(it.payerId===id) it.payerId=null;
@@ -674,6 +688,7 @@ function saveItem(){
   renderEdit(false);
 }
 function deleteItem(){
+  if(!confirm(`確定刪除「${editDraftItem.name||"這筆"}」？`)) return;
   current.items = current.items.filter(x=>x.id!==editDraftItem.id);
   editDraftItem=null;
   persistCurrent();
@@ -751,6 +766,7 @@ function saveAdj(){
   editDraftAdj=null; persistCurrent(); renderEdit(false);
 }
 function deleteAdj(){
+  if(!confirm(`確定刪除「${editDraftAdj.name||"這筆調整"}」？`)) return;
   current.adjustments = (current.adjustments||[]).filter(x=>x.id!==editDraftAdj.id);
   editDraftAdj=null; persistCurrent(); renderEdit(false);
 }
