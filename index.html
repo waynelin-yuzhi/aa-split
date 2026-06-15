@@ -164,9 +164,17 @@ const SUPABASE_KEY = "sb_publishable_WMQUMN8bIlHTwwR95bLueA_VUOI_Drd";
  *   淨值法（已付 − 應付）→ 最少轉帳配對 → 六道驗算
  *   差異：零頭採整數淨值法（殘差由最大收款人吸收），轉帳保證對帳歸零。
  * ========================================================================= */
+// 一筆項目的有效金額（指定金額模式 = 各人金額加總，其餘 = 金額欄）
+function effectiveItemAmount(it){
+  const sharers = (it.sharerIds || []);
+  if(it.split && it.split.mode === 'amount'){
+    return sharers.reduce((s,id)=> s + (Number(it.split.values?.[id]) || 0), 0);
+  }
+  return Number(it.amount) || 0;
+}
 function itemsTotal(items){
   return (items || []).reduce((s,it)=>{
-    const amt = Number(it.amount)||0;
+    const amt = effectiveItemAmount(it);
     return s + ((amt>0 && (it.sharerIds||[]).length>0) ? amt : 0);
   }, 0);
 }
@@ -190,15 +198,30 @@ function computeSplit(members, items, adjustments){
   const paid = Object.fromEntries(ids.map(id => [id, 0]));
   let total = 0;
 
-  // 每筆支出：分攤名單決定 owe、付款人決定 paid
+  // 每筆支出：分攤名單 + 分法（均分/份數/指定金額）決定 owe；付款人決定 paid
   for(const it of items){
-    const amt = Number(it.amount) || 0;
     const sharers = (it.sharerIds || []).filter(id => id in owe);
-    if(amt <= 0 || sharers.length === 0) continue;
-    total += amt;
-    const per = amt / sharers.length;
-    for(const s of sharers) owe[s] += per;
-    if(it.payerId && it.payerId in paid) paid[it.payerId] += amt;
+    if(sharers.length === 0) continue;
+    const mode = (it.split && it.split.mode) || 'equal';
+    const amt = Number(it.amount) || 0;
+    let itemAmt = 0;
+    if(mode === 'amount'){
+      const vals = sharers.map(s => Number(it.split.values?.[s]) || 0);
+      itemAmt = vals.reduce((a,b)=>a+b, 0);
+      if(itemAmt <= 0) continue;
+      sharers.forEach((s,k)=> owe[s] += vals[k]);
+    } else if(mode === 'shares'){
+      if(amt <= 0) continue; itemAmt = amt;
+      let tot = 0; for(const s of sharers) tot += (Number(it.split.values?.[s]) || 1);
+      if(tot <= 0) tot = sharers.length;
+      for(const s of sharers) owe[s] += amt * (Number(it.split.values?.[s]) || 1) / tot;
+    } else {
+      if(amt <= 0) continue; itemAmt = amt;
+      const per = amt / sharers.length;
+      for(const s of sharers) owe[s] += per;
+    }
+    total += itemAmt;
+    if(it.payerId && it.payerId in paid) paid[it.payerId] += itemAmt;
   }
 
   // 整單調整層：服務費/折扣按比例分攤——應付與已付兩側同步 scale，保持守恆
@@ -522,12 +545,13 @@ function itemRowHTML(it){
   else if(sn<=3) who = current.members.filter(x=>it.sharerIds.includes(x.id)).map(x=>x.name).join("、") + " 均分";
   else who = `${sn} 人分`;
   const payer = current.members.find(x=>x.id===it.payerId);
+  const modeTag = (it.split && it.split.mode==='shares') ? ' ・按份數' : (it.split && it.split.mode==='amount') ? ' ・指定金額' : '';
   return `<div class="itemrow" onclick="startEditItem('${it.id}')">
     <div class="info">
       <div class="nm">${esc(it.name||"未命名")}</div>
-      <div class="sub"><b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 付 ・ ${esc(who)}</div>
+      <div class="sub"><b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 付 ・ ${esc(who)}${modeTag}</div>
     </div>
-    <div class="price num">${money(it.amount)}</div>
+    <div class="price num">${money(effectiveItemAmount(it))}</div>
     <div class="faint">›</div>
   </div>`;
 }
@@ -639,7 +663,8 @@ function startAddItem(){
   const valid = id => current.members.some(m=>m.id===id);
   editDraftItem = { id:uid(), name:"", amount:"",
                     payerId: (valid(myId) && myId) || lastPayer || current.members[0]?.id || null,
-                    sharerIds: current.members.map(m=>m.id), _isNew:true };
+                    sharerIds: current.members.map(m=>m.id),
+                    split: { mode:"equal", values:{} }, _isNew:true };
   renderItemForm();
 }
 function startEditItem(id){
@@ -650,24 +675,44 @@ function startEditItem(id){
 }
 function renderItemForm(){
   const d = editDraftItem, m = current.members;
+  const sp = d.split || (d.split = { mode:"equal", values:{} });
+  if(!sp.values) sp.values = {};
+  const mode = sp.mode || "equal";
   const allOn = d.sharerIds.length === m.length;
+  const sel = m.filter(p=>d.sharerIds.includes(p.id));
+  const amountSum = sel.reduce((s,p)=> s + (Number(sp.values[p.id])||0), 0);
   $("#main").innerHTML = `
     <div class="card">
       <div class="sect-title">${d._isNew?"新增項目":"編輯項目"}</div>
       <label class="fld"><span>品名</span>
         <input id="itName" placeholder="例如：海鮮鍋、啤酒、Uber" value="${esc(d.name)}"></label>
-      <label class="fld"><span>金額</span>
-        <input id="itAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>
+      ${mode!=='amount'
+        ? `<label class="fld"><span>金額</span>
+            <input id="itAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>`
+        : `<div class="fld"><span style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px;">金額（各人加總）</span>
+            <div class="num" style="font-size:19px;font-weight:700;">${money(amountSum)}</div></div>`}
       <label class="fld"><span>誰付的錢</span>
         <select id="itPayer">
           ${m.map(p=>`<option value="${p.id}" ${p.id===d.payerId?"selected":""}>${esc(p.name)}</option>`).join("")}
         </select></label>
       <div class="sect-title" style="margin-top:4px;">誰分攤這筆</div>
-      <div class="hint">點名字切換；預設全員均分</div>
+      <div class="hint">點名字切換</div>
       <div class="chips">
         <span class="chip ${allOn?'on':''}" onclick="toggleAllSharers()">全員</span>
         ${m.map(p=>`<span class="chip ${d.sharerIds.includes(p.id)?'on':''}" onclick="toggleSharer('${p.id}')">${esc(p.name)}</span>`).join("")}
       </div>
+      <div class="sect-title" style="margin-top:14px;">分法</div>
+      <div class="chips">
+        <span class="chip ${mode==='equal'?'on':''}" onclick="setSplitMode('equal')">均分</span>
+        <span class="chip ${mode==='shares'?'on':''}" onclick="setSplitMode('shares')">按份數</span>
+        <span class="chip ${mode==='amount'?'on':''}" onclick="setSplitMode('amount')">指定金額</span>
+      </div>
+      ${mode!=='equal' && sel.length ? `<div class="spacer"></div>
+        <div class="hint">${mode==='shares'?'各填份數，多吃的人填多份（按比例分攤金額）':'各填確切金額，總額自動加總'}</div>
+        ${sel.map(p=>`<div class="row" style="align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="flex:1;">${esc(p.name)}</span>
+          <input class="splitval" data-mid="${p.id}" type="number" inputmode="decimal" style="flex:0 0 120px;" placeholder="${mode==='shares'?'1 份':'0'}" value="${esc(sp.values[p.id]??'')}">
+        </div>`).join("")}` : ''}
     </div>
     <div class="row">
       <button class="btn ghost" onclick="renderEdit(false)">取消</button>
@@ -683,6 +728,15 @@ function syncDraftInputs(){
   if(n) n.oninput = ()=> editDraftItem.name = n.value;
   if(a) a.oninput = ()=> editDraftItem.amount = a.value;
   if(p) p.onchange = ()=> editDraftItem.payerId = p.value;
+  document.querySelectorAll('.splitval').forEach(inp=>{
+    inp.oninput = ()=>{ editDraftItem.split.values[inp.dataset.mid] = inp.value; };
+  });
+}
+function setSplitMode(mode){
+  const sp = editDraftItem.split || (editDraftItem.split = {mode:"equal", values:{}});
+  sp.mode = mode;
+  if(mode==='shares') editDraftItem.sharerIds.forEach(id=>{ if(sp.values[id]===undefined || sp.values[id]==="") sp.values[id]=1; });
+  renderItemForm();
 }
 function toggleSharer(id){
   const arr = editDraftItem.sharerIds;
@@ -698,10 +752,19 @@ function toggleAllSharers(){
 function saveItem(){
   const d = editDraftItem;
   d.name = ($("#itName").value||"").trim() || "未命名";
-  d.amount = Number($("#itAmt").value)||0;
   d.payerId = $("#itPayer").value;
-  if(d.amount<=0){ toast("金額要大於 0"); return; }
   if(d.sharerIds.length===0){ toast("至少要有一個人分攤"); return; }
+  const mode = (d.split && d.split.mode) || 'equal';
+  if(mode==='amount'){
+    const sum = d.sharerIds.reduce((s,id)=> s + (Number(d.split.values?.[id])||0), 0);
+    if(sum<=0){ toast("指定金額至少要有一筆大於 0"); return; }
+    d.amount = sum;
+  } else {
+    d.amount = Number($("#itAmt").value)||0;
+    if(d.amount<=0){ toast("金額要大於 0"); return; }
+    if(mode==='shares' && d.sharerIds.reduce((s,id)=>s+(Number(d.split.values?.[id])||1),0)<=0){ toast("份數要大於 0"); return; }
+  }
+  if(d.split && d.split.values) Object.keys(d.split.values).forEach(k=>{ if(!d.sharerIds.includes(k)) delete d.split.values[k]; });
   const isNew = d._isNew; delete d._isNew;
   const i = current.items.findIndex(x=>x.id===d.id);
   if(i>=0) current.items[i]=d; else current.items.push(d);
