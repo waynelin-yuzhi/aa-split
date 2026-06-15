@@ -1,39 +1,28 @@
 -- ============================================================
--- AA 分帳 — Supabase schema（公開版資料結構）
+-- AA 分帳 — Supabase schema（Stage 2a：分享連結協作，尚未接 LINE 登入）
 -- 用法：Supabase Dashboard → SQL Editor → 貼上整段 → Run。
--- 認證設計：LINE id token 由 Edge Function 驗證後，換發 Supabase JWT，
---           其 sub = app_users.id（uuid），讓 auth.uid() 正常運作。
--- 協作設計：聚會 id 不可猜 + share_token = 「知道連結的人」能讀寫（capability）。
+-- 存取模型：聚會 id 不可猜（uuid）+ share_token = 「知道連結的人」可讀寫（capability）。
+--           資料表 RLS 全鎖（直接查表一律拒絕），所有存取只能走下方 RPC。
+-- LINE 登入 / 擁有權（owner）留待 Stage 2b 再疊上（owner_id 欄位已預留）。
 -- ============================================================
 
 create extension if not exists pgcrypto;
 
--- 1) 使用者：LINE userId ↔ 內部 uuid
-create table if not exists app_users (
-  id            uuid primary key default gen_random_uuid(),
-  line_user_id  text unique not null,
-  display_name  text,
-  picture_url   text,
-  created_at    timestamptz not null default now()
-);
-
--- 2) 聚會：header 欄位可查詢，巢狀資料放 jsonb（一場聚會原子讀寫）
 create table if not exists gatherings (
-  id            uuid primary key default gen_random_uuid(),
-  owner_id      uuid not null references app_users(id) on delete cascade,
-  share_token   text not null default encode(gen_random_bytes(16), 'hex'),
-  title         text,
-  event_date    date,
-  currency      text not null default 'TWD',
-  status        text not null default 'open',          -- open | settled
-  participants  jsonb not null default '[]'::jsonb,    -- [{id,name,lineUserId?}]
-  items         jsonb not null default '[]'::jsonb,    -- [{id,name,amount,sharerIds[]}]
-  payments      jsonb not null default '[]'::jsonb,    -- [{id,payerId,amount,isFull}]
-  settlements   jsonb not null default '[]'::jsonb,    -- 之後做「誰已還錢」
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  id           uuid primary key default gen_random_uuid(),
+  share_token  text not null default encode(gen_random_bytes(16), 'hex'),
+  owner_id     text,                                   -- 預留：Stage 2b 接 LINE userId
+  title        text,
+  event_date   date,
+  currency     text not null default 'TWD',
+  status       text not null default 'open',           -- open | settled
+  participants jsonb not null default '[]'::jsonb,      -- [{id,name,lineUserId?}]
+  items        jsonb not null default '[]'::jsonb,      -- [{id,name,amount,payerId,sharerIds[]}]
+  adjustments  jsonb not null default '[]'::jsonb,      -- [{id,name,kind,value,sign}]
+  settlements  jsonb not null default '[]'::jsonb,      -- 之後做「誰已還錢」
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
 );
-create index if not exists gatherings_owner_idx on gatherings(owner_id);
 
 -- updated_at 自動更新
 create or replace function touch_updated_at() returns trigger language plpgsql as $$
@@ -42,28 +31,31 @@ drop trigger if exists trg_gatherings_touch on gatherings;
 create trigger trg_gatherings_touch before update on gatherings
   for each row execute function touch_updated_at();
 
--- 3) RLS：直接存取僅限 owner（auth.uid()）；協作者走下方 RPC
-alter table app_users  enable row level security;
+-- RLS 全鎖：直接查表一律拒絕，只能透過下方 SECURITY DEFINER RPC 存取
 alter table gatherings enable row level security;
 
-drop policy if exists "owner reads own user row" on app_users;
-create policy "owner reads own user row" on app_users
-  for select using (id = auth.uid());
+-- 建立聚會：回傳 id + share_token（呼叫端存進本機索引，當「我的聚會」清單）
+create or replace function create_gathering(p_title text, p_event_date date, p_currency text)
+returns gatherings language plpgsql security definer set search_path = public as $$
+declare g gatherings;
+begin
+  insert into gatherings(title, event_date, currency)
+  values (p_title, p_event_date, coalesce(p_currency, 'TWD'))
+  returning * into g;
+  return g;
+end; $$;
 
-drop policy if exists "owner full access" on gatherings;
-create policy "owner full access" on gatherings
-  for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-
--- 4) 協作 RPC（SECURITY DEFINER：用 id + share_token 當連結鑰匙，繞過 RLS）
+-- 讀取：要 id + 正確 token
 create or replace function get_gathering(p_id uuid, p_token text)
 returns gatherings language sql security definer set search_path = public as $$
   select * from gatherings where id = p_id and share_token = p_token;
 $$;
 
+-- 整場覆寫（協作者編輯後存回）：要 id + 正確 token
 create or replace function save_gathering(
   p_id uuid, p_token text,
   p_title text, p_event_date date, p_currency text, p_status text,
-  p_participants jsonb, p_items jsonb, p_payments jsonb, p_settlements jsonb
+  p_participants jsonb, p_items jsonb, p_adjustments jsonb, p_settlements jsonb
 ) returns gatherings language plpgsql security definer set search_path = public as $$
 declare g gatherings;
 begin
@@ -74,7 +66,7 @@ begin
     status       = coalesce(p_status, 'open'),
     participants = coalesce(p_participants, participants),
     items        = coalesce(p_items, items),
-    payments     = coalesce(p_payments, payments),
+    adjustments  = coalesce(p_adjustments, adjustments),
     settlements  = coalesce(p_settlements, settlements)
   where id = p_id and share_token = p_token
   returning * into g;
@@ -82,5 +74,14 @@ begin
   return g;
 end; $$;
 
-grant execute on function get_gathering(uuid, text) to anon, authenticated;
-grant execute on function save_gathering(uuid, text, text, date, text, text, jsonb, jsonb, jsonb, jsonb) to anon, authenticated;
+-- 刪除：要 id + 正確 token
+create or replace function delete_gathering(p_id uuid, p_token text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  delete from gatherings where id = p_id and share_token = p_token;
+end; $$;
+
+grant execute on function create_gathering(text, date, text)                                              to anon, authenticated;
+grant execute on function get_gathering(uuid, text)                                                       to anon, authenticated;
+grant execute on function save_gathering(uuid, text, text, date, text, text, jsonb, jsonb, jsonb, jsonb)  to anon, authenticated;
+grant execute on function delete_gathering(uuid, text)                                                    to anon, authenticated;
