@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>AA 分帳</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1f232c; --line:#2a2f3a;
+    --ink:#e8eaed; --muted:#9aa1ad; --faint:#6b7280;
+    --accent:#7dd3a8; --accent2:#5eb98a; --warn:#f0a868; --danger:#e5775f;
+    --pay:#e5775f; --get:#7dd3a8;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif;
+    font-size:16px; line-height:1.5;}
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
+  .num{font-variant-numeric:tabular-nums; font-feature-settings:"tnum";}
+  .app{max-width:520px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
+  header.bar{position:sticky; top:0; z-index:10; background:rgba(15,17,21,.86);
+    backdrop-filter:saturate(140%) blur(10px); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:10px; padding:14px 16px;}
+  header.bar h1{font-size:18px; margin:0; font-weight:650; flex:1;}
+  .btn{appearance:none; border:0; border-radius:12px; padding:11px 16px; font-size:15px;
+    font-weight:600; color:#0c1410; background:var(--accent); cursor:pointer;}
+  .btn:active{transform:translateY(1px);}
+  .btn.ghost{background:var(--panel2); color:var(--ink);}
+  .btn.line{background:#06c755; color:#fff;}
+  .btn.sm{padding:7px 12px; font-size:13px; border-radius:10px;}
+  .btn.block{width:100%; padding:15px; font-size:16px; border-radius:14px;}
+  .btn.danger{background:transparent; color:var(--danger); border:1px solid var(--line);}
+  .iconbtn{background:var(--panel2); color:var(--muted); border:0; width:38px; height:38px;
+    border-radius:10px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center;}
+  main{flex:1; padding:16px; padding-bottom:28px;}
+  .muted{color:var(--muted);} .faint{color:var(--faint); font-size:13px;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px; margin-bottom:14px;}
+  .sect-title{font-size:13px; color:var(--muted); font-weight:600; letter-spacing:.04em;
+    margin:4px 2px 10px; text-transform:uppercase;}
+  label.fld{display:block; margin-bottom:12px;}
+  label.fld > span{display:block; font-size:13px; color:var(--muted); margin-bottom:6px;}
+  input,select{width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:11px; padding:12px 13px; font-size:16px; outline:none;}
+  input:focus,select:focus{border-color:var(--accent2);}
+  .row{display:flex; gap:10px;}
+  .row > *{flex:1;}
+  .chip{display:inline-flex; align-items:center; gap:6px; background:var(--panel2);
+    border:1px solid var(--line); color:var(--ink); border-radius:999px; padding:8px 13px;
+    font-size:14px; cursor:pointer; user-select:none;}
+  .chip.on{background:var(--accent); color:#0c1410; border-color:var(--accent);}
+  .chip .x{color:var(--faint); font-weight:700;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .empty{text-align:center; color:var(--muted); padding:48px 20px;}
+  .empty .big{font-size:40px; margin-bottom:10px;}
+  /* list rows */
+  .listrow{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--panel);
+    border:1px solid var(--line); border-radius:14px; margin-bottom:10px; cursor:pointer;}
+  .listrow:active{background:var(--panel2);}
+  .listrow .meta{flex:1; min-width:0;}
+  .listrow .meta .t{font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .listrow .meta .s{font-size:13px; color:var(--muted);}
+  .listrow .amt{font-weight:700; color:var(--accent);}
+  .itemrow{display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--line);}
+  .itemrow:last-child{border-bottom:0;}
+  .itemrow .info{flex:1; min-width:0;}
+  .itemrow .info .nm{font-weight:600;}
+  .itemrow .info .sub{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .itemrow .price{font-weight:700;}
+  /* result card */
+  #resultCard{background:linear-gradient(165deg,#13161d,#0e1014); border:1px solid #262b36;
+    border-radius:20px; padding:20px; }
+  #resultCard .rc-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px;}
+  #resultCard .rc-title{font-size:19px; font-weight:700;}
+  #resultCard .rc-sub{font-size:13px; color:var(--muted); margin-top:2px;}
+  #resultCard .rc-total{font-size:13px; color:var(--muted); text-align:right;}
+  #resultCard .rc-total b{display:block; font-size:22px; color:var(--ink); font-weight:750;}
+  .rc-block{margin-top:18px;}
+  .rc-block .h{font-size:12px; letter-spacing:.05em; color:var(--faint); text-transform:uppercase; margin-bottom:9px;}
+  .person{display:flex; align-items:center; justify-content:space-between; padding:7px 0; font-size:15px;}
+  .person .nm{flex:1;}
+  .person .ow{color:var(--muted); width:120px; text-align:right;}
+  .person .net{width:96px; text-align:right; font-weight:650;}
+  .net.pos{color:var(--get);} .net.neg{color:var(--pay);}
+  .transfer{display:flex; align-items:center; gap:8px; padding:10px 12px; background:#171b22;
+    border:1px solid #242a34; border-radius:12px; margin-bottom:8px; font-size:15.5px;}
+  .transfer .from{color:var(--pay); font-weight:650;}
+  .transfer .arr{color:var(--faint);}
+  .transfer .to{color:var(--get); font-weight:650;}
+  .transfer .v{margin-left:auto; font-weight:750;}
+  .verify{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--accent);
+    background:rgba(125,211,168,.1); border:1px solid rgba(125,211,168,.25); border-radius:999px; padding:5px 11px; margin-top:14px;}
+  .verify.bad{color:var(--danger); background:rgba(229,119,95,.1); border-color:rgba(229,119,95,.3);}
+  .actions{display:flex; gap:10px; margin-top:16px;}
+  .actions > *{flex:1;}
+  .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+    background:#2a2f3a; color:#fff; padding:11px 18px; border-radius:12px; font-size:14px;
+    opacity:0; pointer-events:none; transition:.25s; z-index:50; box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  .hint{font-size:12.5px; color:var(--faint); margin:-2px 2px 12px;}
+  .hidden{display:none !important;}
+  .spacer{height:8px;}
+  .topgap{margin-top:6px;}
+  hr.sep{border:0; border-top:1px solid var(--line); margin:16px 0;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <button id="backBtn" class="iconbtn hidden" aria-label="返回">‹</button>
+    <h1 id="title">AA 分帳</h1>
+    <button id="addGatheringBtn" class="btn sm">＋ 新聚會</button>
+  </header>
+  <main id="main"></main>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+ * 設定：填入你的 LIFF ID（LINE Developers → LIFF）。留空也能在瀏覽器使用。
+ * ========================================================================= */
+const LIFF_ID = ""; // 例如 "2000000000-xxxxxxxx"
+
+/* =========================================================================
+ * 計算引擎 —— 忠實移植自 aa-split skill 的 aa.py
+ *   淨值法（已付 − 應付）→ 最少轉帳配對 → 六道驗算
+ *   差異：零頭採整數淨值法（殘差由最大收款人吸收），轉帳保證對帳歸零。
+ * ========================================================================= */
+function computeSplit(members, items){
+  const ids = members.map(m => m.id);
+  const nameOf = Object.fromEntries(members.map(m => [m.id, m.name]));
+
+  const owe  = Object.fromEntries(ids.map(id => [id, 0]));
+  const paid = Object.fromEntries(ids.map(id => [id, 0]));
+  let total = 0;
+
+  for(const it of items){
+    const amt = Number(it.amount) || 0;
+    const sharers = (it.sharerIds || []).filter(id => id in owe);
+    if(amt <= 0 || sharers.length === 0) continue;
+    total += amt;
+    const per = amt / sharers.length;
+    for(const s of sharers) owe[s] += per;
+    if(it.payerId && it.payerId in paid) paid[it.payerId] += amt;
+  }
+
+  // 淨值 = 已付 − 應付
+  const net = Object.fromEntries(ids.map(id => [id, paid[id] - owe[id]]));
+
+  // 整數化淨值，殘差丟給最大收款人（零頭吸收），保證總和 = 0
+  const netR = Object.fromEntries(ids.map(id => [id, Math.round(net[id])]));
+  let residual = -ids.reduce((s,id) => s + netR[id], 0);
+  if(residual !== 0){
+    const maxCreditor = ids.slice().sort((a,b) => net[b] - net[a])[0];
+    netR[maxCreditor] += residual;
+  }
+
+  // 最少轉帳配對（貪婪：最大欠款人 ↔ 最大收款人）
+  const creditors = ids.filter(id => netR[id] > 0).map(id => [id, netR[id]]).sort((a,b)=>b[1]-a[1]);
+  const debtors   = ids.filter(id => netR[id] < 0).map(id => [id, -netR[id]]).sort((a,b)=>b[1]-a[1]);
+  const transfers = [];
+  let i=0, j=0;
+  while(i < debtors.length && j < creditors.length){
+    const pay = Math.min(debtors[i][1], creditors[j][1]);
+    if(pay > 0) transfers.push({from:debtors[i][0], to:creditors[j][0], amount:pay});
+    debtors[i][1] -= pay; creditors[j][1] -= pay;
+    if(debtors[i][1] === 0) i++;
+    if(creditors[j][1] === 0) j++;
+  }
+
+  // 六道驗算
+  const checks = [];
+  const paidSum = ids.reduce((s,id)=>s+paid[id],0);
+  checks.push({ok: Math.abs(paidSum-total)<0.01, label:`實付總額 = 消費總額`});
+  const oweSum = ids.reduce((s,id)=>s+owe[id],0);
+  checks.push({ok: Math.abs(oweSum-total)<0.01, label:`應付總和 = 總額`});
+  checks.push({ok: Math.abs(ids.reduce((s,id)=>s+net[id],0))<0.01, label:`淨值總和 = 0`});
+  const payers = new Set(transfers.map(t=>t.from)), receivers = new Set(transfers.map(t=>t.to));
+  let dirOk = true;
+  for(const id of ids){
+    if(netR[id] > 0 && payers.has(id)) dirOk = false;
+    if(netR[id] < 0 && receivers.has(id)) dirOk = false;
+  }
+  checks.push({ok:dirOk, label:`金流方向正確（正者收、負者付）`});
+  const out = Object.fromEntries(ids.map(id=>[id,0])), inc = Object.fromEntries(ids.map(id=>[id,0]));
+  for(const t of transfers){ out[t.from]+=t.amount; inc[t.to]+=t.amount; }
+  let reconOk = true;
+  for(const id of ids){ if(Math.abs((out[id]-inc[id]) - (-netR[id])) > 1.01) reconOk = false; }
+  checks.push({ok:reconOk, label:`逐人對帳吻合`});
+  checks.push({ok: transfers.length <= Math.max(0, ids.length-1), label:`轉帳筆數 ≤ 人數−1`});
+  const allOk = checks.every(c=>c.ok);
+
+  return {members, nameOf, total, owe, paid, net, netR, transfers, checks, allOk};
+}
+
+/* =========================================================================
+ * 儲存層 —— 抽象成 adapter，Phase 2 換 GAS+Sheet 後端時只改這一塊
+ * ========================================================================= */
+const Store = {
+  KEY: "aa_split_gatherings_v1",
+  _all(){ try{ return JSON.parse(localStorage.getItem(this.KEY)) || []; }catch(e){ return []; } },
+  _save(list){ localStorage.setItem(this.KEY, JSON.stringify(list)); },
+  list(){ return this._all().sort((a,b)=> (b.updatedAt||0)-(a.updatedAt||0)); },
+  get(id){ return this._all().find(g=>g.id===id) || null; },
+  upsert(g){
+    const list = this._all();
+    g.updatedAt = Date.now();
+    const i = list.findIndex(x=>x.id===g.id);
+    if(i>=0) list[i] = g; else list.push(g);
+    this._save(list);
+    return g;
+  },
+  remove(id){ this._save(this._all().filter(g=>g.id!==id)); }
+};
+
+/* =========================================================================
+ * App 狀態 & 工具
+ * ========================================================================= */
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s??"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => "$" + Math.round(n).toLocaleString("en-US");
+const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+
+let liffReady = false, inLineClient = false;
+let view = "list";          // list | edit | result
+let current = null;         // 編輯中的聚會
+let editDraftItem = null;   // 正在新增/編輯的項目
+
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._tm); t._tm = setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+/* =========================================================================
+ * 畫面：聚會列表
+ * ========================================================================= */
+function renderList(){
+  view = "list";
+  current = null;
+  $("#title").textContent = "AA 分帳";
+  $("#backBtn").classList.add("hidden");
+  $("#addGatheringBtn").classList.remove("hidden");
+
+  const gs = Store.list();
+  if(gs.length === 0){
+    $("#main").innerHTML = `
+      <div class="empty">
+        <div class="big">🧾</div>
+        <div>還沒有任何聚會</div>
+        <div class="faint" style="margin-top:6px;">建立一場聚會，把消費丟進去，自動算出誰付誰多少</div>
+        <div class="spacer"></div><div class="spacer"></div>
+        <button class="btn" onclick="newGathering()">＋ 建立第一場聚會</button>
+      </div>`;
+    return;
+  }
+  $("#main").innerHTML = gs.map(g => {
+    const tot = (g.items||[]).reduce((s,it)=> s + ((Number(it.amount)||0) * ((it.sharerIds||[]).length>0?1:0)), 0);
+    const n = (g.members||[]).length;
+    return `<div class="listrow" onclick="openGathering('${g.id}')">
+      <div class="meta">
+        <div class="t">${esc(g.title||"未命名聚會")}</div>
+        <div class="s">${esc(g.date||"")} ・ ${n} 人 ・ ${(g.items||[]).length} 筆</div>
+      </div>
+      <div class="amt num">${money(tot)}</div>
+      <div class="faint">›</div>
+    </div>`;
+  }).join("");
+}
+
+function newGathering(){
+  current = { id:uid(), title:"", date:todayStr(), members:[], items:[] };
+  renderEdit(true);
+}
+function openGathering(id){
+  current = Store.get(id);
+  if(!current) return renderList();
+  renderEdit(false);
+}
+
+/* =========================================================================
+ * 畫面：編輯聚會
+ * ========================================================================= */
+function renderEdit(isNew){
+  view = "edit";
+  $("#title").textContent = isNew ? "新聚會" : "編輯聚會";
+  $("#backBtn").classList.remove("hidden");
+  $("#addGatheringBtn").classList.add("hidden");
+
+  const m = current.members, items = current.items;
+  $("#main").innerHTML = `
+    <div class="card">
+      <label class="fld">
+        <span>聚會名稱</span>
+        <input id="gTitle" placeholder="例如：六月團聚 / 信義區燒肉" value="${esc(current.title)}">
+      </label>
+      <label class="fld" style="margin-bottom:0;">
+        <span>日期</span>
+        <input id="gDate" type="date" value="${esc(current.date)}">
+      </label>
+    </div>
+
+    <div class="card">
+      <div class="sect-title">成員（${m.length}）</div>
+      <div class="chips" id="memberChips">
+        ${m.map(p=>`<span class="chip">${esc(p.name)} <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")}
+        ${m.length===0?'<span class="faint">先加入分帳的人</span>':''}
+      </div>
+      <div class="spacer"></div>
+      <div class="row">
+        <input id="memberInput" placeholder="輸入名字後按 Enter 或＋" style="flex:3;">
+        <button class="btn ghost" style="flex:0 0 auto;" onclick="addMember()">＋</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sect-title">消費項目（${items.length}）</div>
+      <div id="itemList">
+        ${items.length===0 ? '<div class="faint" style="padding:6px 2px;">還沒有項目。每筆＝品名、金額、誰付的、誰分攤。</div>' :
+          items.map(it=>itemRowHTML(it)).join("")}
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost block" onclick="startAddItem()" ${m.length===0?'disabled style="opacity:.45"':''}>
+        ＋ 新增項目${m.length===0?'（先加成員）':''}
+      </button>
+    </div>
+
+    <button class="btn block" onclick="goResult()" ${items.length===0?'disabled style="opacity:.45"':''}>算分帳 →</button>
+    <div class="spacer"></div>
+    <button class="btn danger block" onclick="deleteGathering()">刪除這場聚會</button>
+  `;
+
+  const mi = $("#memberInput");
+  mi.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); addMember(); }});
+}
+
+function itemRowHTML(it){
+  const payer = current.members.find(x=>x.id===it.payerId);
+  const sn = (it.sharerIds||[]).length;
+  const allN = current.members.length;
+  const who = sn===allN ? "全員均分" : `${sn} 人分`;
+  return `<div class="itemrow" onclick="startEditItem('${it.id}')">
+    <div class="info">
+      <div class="nm">${esc(it.name||"未命名")}</div>
+      <div class="sub">${payer?esc(payer.name):"?"} 付 ・ ${who}</div>
+    </div>
+    <div class="price num">${money(it.amount)}</div>
+    <div class="faint">›</div>
+  </div>`;
+}
+
+function persistCurrent(){
+  current.title = $("#gTitle") ? $("#gTitle").value.trim() : current.title;
+  current.date  = $("#gDate")  ? $("#gDate").value : current.date;
+  Store.upsert(current);
+}
+
+function addMember(){
+  const inp = $("#memberInput");
+  const name = inp.value.trim();
+  if(!name) return;
+  if(current.members.some(p=>p.name===name)){ toast("已經有這個名字了"); inp.value=""; return; }
+  current.members.push({id:uid(), name});
+  persistCurrent();
+  renderEdit(false);
+  $("#memberInput").focus();
+}
+function removeMember(id, ev){
+  ev.stopPropagation();
+  current.members = current.members.filter(p=>p.id!==id);
+  current.items.forEach(it=>{
+    if(it.payerId===id) it.payerId=null;
+    it.sharerIds = (it.sharerIds||[]).filter(s=>s!==id);
+  });
+  persistCurrent();
+  renderEdit(false);
+}
+function deleteGathering(){
+  if(!confirm("確定刪除這場聚會？無法復原。")) return;
+  Store.remove(current.id);
+  renderList();
+}
+
+/* ---- 新增 / 編輯項目（簡易表單覆蓋在 list 上方） ---- */
+function startAddItem(){
+  editDraftItem = { id:uid(), name:"", amount:"", payerId: current.members[0]?.id||null,
+                    sharerIds: current.members.map(m=>m.id), _isNew:true };
+  renderItemForm();
+}
+function startEditItem(id){
+  const it = current.items.find(x=>x.id===id);
+  if(!it) return;
+  editDraftItem = JSON.parse(JSON.stringify(it));
+  renderItemForm();
+}
+function renderItemForm(){
+  const d = editDraftItem, m = current.members;
+  const allOn = d.sharerIds.length === m.length;
+  $("#main").innerHTML = `
+    <div class="card">
+      <div class="sect-title">${d._isNew?"新增項目":"編輯項目"}</div>
+      <label class="fld"><span>品名</span>
+        <input id="itName" placeholder="例如：海鮮鍋、啤酒、Uber" value="${esc(d.name)}"></label>
+      <label class="fld"><span>金額</span>
+        <input id="itAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>
+      <label class="fld"><span>誰付的錢</span>
+        <select id="itPayer">
+          ${m.map(p=>`<option value="${p.id}" ${p.id===d.payerId?"selected":""}>${esc(p.name)}</option>`).join("")}
+        </select></label>
+      <div class="sect-title" style="margin-top:4px;">誰分攤這筆</div>
+      <div class="hint">點名字切換；預設全員均分</div>
+      <div class="chips">
+        <span class="chip ${allOn?'on':''}" onclick="toggleAllSharers()">全員</span>
+        ${m.map(p=>`<span class="chip ${d.sharerIds.includes(p.id)?'on':''}" onclick="toggleSharer('${p.id}')">${esc(p.name)}</span>`).join("")}
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn ghost" onclick="renderEdit(false)">取消</button>
+      <button class="btn" onclick="saveItem()">儲存項目</button>
+    </div>
+    ${d._isNew?'':'<div class="spacer"></div><button class="btn danger block" onclick="deleteItem()">刪除這筆</button>'}
+  `;
+  syncDraftInputs();
+}
+function syncDraftInputs(){
+  // 讓表單輸入即時回寫到 draft（切換 chip 重繪時不丟失）
+  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer");
+  if(n) n.oninput = ()=> editDraftItem.name = n.value;
+  if(a) a.oninput = ()=> editDraftItem.amount = a.value;
+  if(p) p.onchange= ()=> editDraftItem.payerId = p.value;
+}
+function toggleSharer(id){
+  const arr = editDraftItem.sharerIds;
+  const i = arr.indexOf(id);
+  if(i>=0) arr.splice(i,1); else arr.push(id);
+  renderItemForm();
+}
+function toggleAllSharers(){
+  const all = current.members.map(m=>m.id);
+  editDraftItem.sharerIds = (editDraftItem.sharerIds.length===all.length) ? [] : all;
+  renderItemForm();
+}
+function saveItem(){
+  const d = editDraftItem;
+  d.name = ($("#itName").value||"").trim() || "未命名";
+  d.amount = Number($("#itAmt").value)||0;
+  d.payerId = $("#itPayer").value;
+  if(d.amount<=0){ toast("金額要大於 0"); return; }
+  if(d.sharerIds.length===0){ toast("至少要有一個人分攤"); return; }
+  const isNew = d._isNew; delete d._isNew;
+  const i = current.items.findIndex(x=>x.id===d.id);
+  if(i>=0) current.items[i]=d; else current.items.push(d);
+  editDraftItem=null;
+  persistCurrent();
+  renderEdit(false);
+}
+function deleteItem(){
+  current.items = current.items.filter(x=>x.id!==editDraftItem.id);
+  editDraftItem=null;
+  persistCurrent();
+  renderEdit(false);
+}
+
+/* =========================================================================
+ * 畫面：分帳結果
+ * ========================================================================= */
+let lastResult = null;
+function goResult(){
+  persistCurrent();
+  renderResult();
+}
+function renderResult(){
+  view = "result";
+  $("#title").textContent = "分帳結果";
+  $("#backBtn").classList.remove("hidden");
+  $("#addGatheringBtn").classList.add("hidden");
+
+  const r = computeSplit(current.members, current.items);
+  lastResult = r;
+  const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
+
+  const peopleRows = ordered.map(p=>{
+    const net = r.netR[p.id];
+    const cls = net>0?"pos":(net<0?"neg":"");
+    const tag = net>0?`+${money(net).slice(1)} 收`:(net<0?`−${money(-net).slice(1)} 付`:"平");
+    return `<div class="person">
+      <span class="nm">${esc(p.name)}</span>
+      <span class="ow num">應付 ${money(r.owe[p.id])}</span>
+      <span class="net ${cls} num">${tag}</span>
+    </div>`;
+  }).join("");
+
+  const transferRows = r.transfers.length===0
+    ? `<div class="faint">大家剛好打平，不用轉帳 🎉</div>`
+    : r.transfers.map(t=>`<div class="transfer">
+        <span class="from">${esc(r.nameOf[t.from])}</span>
+        <span class="arr">→</span>
+        <span class="to">${esc(r.nameOf[t.to])}</span>
+        <span class="v num">${money(t.amount)}</span>
+      </div>`).join("");
+
+  const verify = r.allOk
+    ? `<div class="verify">✓ 六道驗算全部通過</div>`
+    : `<div class="verify bad">⚠ 驗算未通過，請檢查輸入</div>`;
+
+  $("#main").innerHTML = `
+    <div id="resultCard">
+      <div class="rc-head">
+        <div>
+          <div class="rc-title">${esc(current.title||"未命名聚會")}</div>
+          <div class="rc-sub">${esc(current.date||"")} ・ ${current.members.length} 人</div>
+        </div>
+        <div class="rc-total">總額<b class="num">${money(r.total)}</b></div>
+      </div>
+
+      <div class="rc-block">
+        <div class="h">每人</div>
+        ${peopleRows}
+      </div>
+
+      <div class="rc-block">
+        <div class="h">最少轉帳 ${r.transfers.length>0?`（${r.transfers.length} 筆）`:''}</div>
+        ${transferRows}
+      </div>
+      ${verify}
+    </div>
+
+    <div class="actions">
+      <button class="btn ghost" onclick="copyText()">複製文字</button>
+      <button class="btn line" id="shareBtn" onclick="shareToLine()">分享到 LINE</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="renderEdit(false)">← 回去改項目</button>
+  `;
+  if(!inLineClient){ const b=$("#shareBtn"); b.textContent="系統分享"; }
+}
+
+function resultText(){
+  const r = lastResult;
+  const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
+  let s = `🧾 ${current.title||"AA 分帳"}（${current.date||""}）\n`;
+  s += `總額 ${money(r.total)}・${current.members.length} 人\n\n`;
+  s += `〔每人〕\n`;
+  for(const p of ordered){
+    const net=r.netR[p.id];
+    const tag = net>0?`該收 ${money(net)}`:(net<0?`該付 ${money(-net)}`:"打平");
+    s += `・${p.name}：應付 ${money(r.owe[p.id])}（${tag}）\n`;
+  }
+  s += `\n💸 最少轉帳\n`;
+  if(r.transfers.length===0) s += `・大家剛好打平，免轉帳 🎉\n`;
+  else for(const t of r.transfers) s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}\n`;
+  if(r.allOk) s += `\n✅ 已驗算`;
+  return s;
+}
+
+function copyText(){
+  const txt = resultText();
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(txt).then(()=>toast("已複製，可貼到 LINE")).catch(()=>fallbackCopy(txt));
+  } else fallbackCopy(txt);
+}
+function fallbackCopy(txt){
+  const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta);
+  ta.select(); try{ document.execCommand("copy"); toast("已複製"); }catch(e){ toast("複製失敗，請手動選取"); }
+  document.body.removeChild(ta);
+}
+
+function shareToLine(){
+  const txt = resultText();
+  if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
+    liff.shareTargetPicker([{type:"text", text:txt}])
+      .then(()=>toast("已開啟分享"))
+      .catch(err=>{ console.error(err); toast("分享取消或失敗"); });
+  } else if(navigator.share){
+    navigator.share({text:txt}).catch(()=>{});
+  } else {
+    copyText();
+  }
+}
+
+/* =========================================================================
+ * 返回 / 路由
+ * ========================================================================= */
+$("#backBtn").addEventListener("click", ()=>{
+  if(view==="result") renderEdit(false);
+  else if(view==="edit"){ if(editDraftItem){ editDraftItem=null; renderEdit(false); } else renderList(); }
+  else renderList();
+});
+$("#addGatheringBtn").addEventListener("click", newGathering);
+
+/* =========================================================================
+ * LIFF 初始化（沒填 LIFF_ID 或非 LINE 環境也能正常用）
+ * ========================================================================= */
+async function initLiff(){
+  if(!LIFF_ID || typeof liff==="undefined"){ renderList(); return; }
+  try{
+    await liff.init({liffId: LIFF_ID});
+    liffReady = true;
+    inLineClient = liff.isInClient();
+  }catch(e){ console.warn("LIFF init failed:", e); }
+  renderList();
+}
+initLiff();
+</script>
+</body>
+</html>
