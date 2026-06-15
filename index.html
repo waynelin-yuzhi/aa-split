@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#0f1115">
 <title>欸，算一下！ Check Plz</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1f232c; --line:#2a2f3a;
@@ -129,6 +132,10 @@
  * ========================================================================= */
 const LIFF_ID = ""; // 例如 "2000000000-xxxxxxxx"
 
+/* Supabase 後端（publishable key 是公開金鑰、可放前端；隱私靠 RLS 全鎖 + RPC） */
+const SUPABASE_URL = "https://ytlakkxrbookftluulbo.supabase.co";
+const SUPABASE_KEY = "sb_publishable_WMQUMN8bIlHTwwR95bLueA_VUOI_Drd";
+
 /* =========================================================================
  * 計算引擎 —— 忠實移植自 aa-split skill 的 aa.py
  *   淨值法（已付 − 應付）→ 最少轉帳配對 → 六道驗算
@@ -230,36 +237,86 @@ function computeSplit(members, items, adjustments){
 }
 
 /* =========================================================================
- * 儲存層 —— 抽象成 adapter，Phase 2 換 GAS+Sheet 後端時只改這一塊
+ * 雲端後端（Supabase）+ 儲存層
+ *   - 每場聚會存 Supabase，用「不可猜 id + share_token」當連結鑰匙（capability）
+ *   - 本機只存一份索引（aa_index_v1）給列表用，完整資料即時從雲端讀
+ *   - 沒設定金鑰時自動退回 localStorage（純本機）
  * ========================================================================= */
+const sb = (SUPABASE_URL && SUPABASE_KEY && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const CLOUD = !!sb;
+
+async function rpc(name, args){
+  const { data, error } = await sb.rpc(name, args);
+  if(error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+// 雲端 row ↔ app 物件（members↔participants、date↔event_date）
+function rowToGathering(row, token){
+  return {
+    id: row.id, shareToken: row.share_token || token,
+    title: row.title || "", date: row.event_date || "",
+    currency: row.currency || "TWD", status: row.status || "open",
+    members: row.participants || [], items: row.items || [],
+    adjustments: row.adjustments || [], settlements: row.settlements || []
+  };
+}
+
 const Store = {
-  KEY: "aa_split_gatherings_v1",
-  _all(){ try{ return JSON.parse(localStorage.getItem(this.KEY)) || []; }catch(e){ return []; } },
-  _save(list){ localStorage.setItem(this.KEY, JSON.stringify(list)); },
-  list(){ return this._all().sort((a,b)=> (b.updatedAt||0)-(a.updatedAt||0)); },
-  get(id){ return this._migrate(this._all().find(g=>g.id===id) || null); },
-  _migrate(g){
-    if(!g) return g;
-    if(!Array.isArray(g.adjustments)) g.adjustments = [];
-    // 舊版有獨立 payments 層 → 收斂回每筆項目的付款人
-    if(Array.isArray(g.payments)){
-      const full = g.payments.find(p=>p.isFull);
-      const fallback = full ? full.payerId
-        : (g.payments.slice().sort((a,b)=>(b.amount||0)-(a.amount||0))[0]?.payerId || null);
-      (g.items||[]).forEach(it=>{ if(!it.payerId) it.payerId = fallback || g.members?.[0]?.id || null; });
-      delete g.payments;
+  IDX: "aa_index_v1",
+  LKEY: "aa_split_gatherings_v1",   // localStorage 模式的完整資料
+  _idx(){ try{ return JSON.parse(localStorage.getItem(this.IDX)) || []; }catch(e){ return []; } },
+  _saveIdx(a){ localStorage.setItem(this.IDX, JSON.stringify(a)); },
+  putIdx(g){
+    const a = this._idx().filter(x=>x.id!==g.id);
+    a.unshift({ id:g.id, token:g.shareToken, title:g.title, date:g.date,
+                n:(g.members||[]).length, count:(g.items||[]).length,
+                total: grandTotal(g.items, g.adjustments), updatedAt:Date.now() });
+    this._saveIdx(a);
+  },
+  rmIdx(id){ this._saveIdx(this._idx().filter(x=>x.id!==id)); },
+  tokenOf(id){ return (this._idx().find(x=>x.id===id)||{}).token; },
+
+  list(){ return this._idx().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)); },
+
+  async create(g){
+    if(CLOUD){
+      const row = await rpc("create_gathering", { p_title:g.title||null, p_event_date:g.date||null, p_currency:g.currency||"TWD" });
+      g.id = row.id; g.shareToken = row.share_token;
+    } else { g.id = uid(); g.shareToken = uid(); this._lput(g); }
+    this.putIdx(g);
+    return g;
+  },
+  async save(g){
+    if(CLOUD){
+      await rpc("save_gathering", {
+        p_id:g.id, p_token:g.shareToken, p_title:g.title||null, p_event_date:g.date||null,
+        p_currency:g.currency||"TWD", p_status:g.status||"open",
+        p_participants:g.members||[], p_items:g.items||[], p_adjustments:g.adjustments||[], p_settlements:g.settlements||[]
+      });
+    } else { this._lput(g); }
+    this.putIdx(g);
+    return g;
+  },
+  async get(id, token){
+    if(CLOUD){
+      const t = token || this.tokenOf(id);
+      const row = await rpc("get_gathering", { p_id:id, p_token:t });
+      return row ? rowToGathering(row, t) : null;
     }
-    return g;
+    return this._lget(id);
   },
-  upsert(g){
-    const list = this._all();
-    g.updatedAt = Date.now();
-    const i = list.findIndex(x=>x.id===g.id);
-    if(i>=0) list[i] = g; else list.push(g);
-    this._save(list);
-    return g;
+  async remove(id){
+    if(CLOUD){ await rpc("delete_gathering", { p_id:id, p_token:this.tokenOf(id) }); }
+    else { this._save(this._all().filter(g=>g.id!==id)); }
+    this.rmIdx(id);
   },
-  remove(id){ this._save(this._all().filter(g=>g.id!==id)); }
+
+  // ---- localStorage 模式（無金鑰時的退路）----
+  _all(){ try{ return JSON.parse(localStorage.getItem(this.LKEY)) || []; }catch(e){ return []; } },
+  _save(list){ localStorage.setItem(this.LKEY, JSON.stringify(list)); },
+  _lput(g){ const l=this._all().filter(x=>x.id!==g.id); l.push(g); this._save(l); },
+  _lget(id){ return this._all().find(g=>g.id===id) || null; }
 };
 
 /* =========================================================================
@@ -304,27 +361,30 @@ function renderList(){
       </div>`;
     return;
   }
-  $("#main").innerHTML = gs.map(g => {
-    const tot = (g.items||[]).reduce((s,it)=> s + ((Number(it.amount)||0) * ((it.sharerIds||[]).length>0?1:0)), 0);
-    const n = (g.members||[]).length;
-    return `<div class="listrow" onclick="openGathering('${g.id}')">
+  $("#main").innerHTML = gs.map(g => `
+    <div class="listrow" onclick="openGathering('${g.id}')">
       <div class="meta">
         <div class="t">${esc(g.title||"未命名聚會")}</div>
-        <div class="s">${esc(g.date||"")} ・ ${n} 人 ・ ${(g.items||[]).length} 筆</div>
+        <div class="s">${esc(g.date||"")} ・ ${g.n||0} 人 ・ ${g.count||0} 筆</div>
       </div>
-      <div class="amt num">${money(tot)}</div>
+      <div class="amt num">${money(g.total||0)}</div>
       <div class="faint">›</div>
-    </div>`;
-  }).join("");
+    </div>`).join("");
 }
 
-function newGathering(){
-  current = { id:uid(), title:"", date:todayStr(), members:[], items:[], adjustments:[] };
+async function newGathering(){
+  const g = { id:null, shareToken:null, title:"", date:todayStr(), currency:"TWD",
+              status:"open", members:[], items:[], adjustments:[], settlements:[] };
+  try{ await Store.create(g); }
+  catch(e){ console.error(e); toast("建立失敗，檢查網路"); return; }
+  current = g;
   renderEdit(true);
 }
-function openGathering(id){
-  current = Store.get(id);
-  if(!current) return renderList();
+async function openGathering(id){
+  $("#main").innerHTML = `<div class="empty"><div class="big">⏳</div><div>載入中…</div></div>`;
+  try{ current = await Store.get(id); }
+  catch(e){ console.error(e); current = null; }
+  if(!current){ toast("讀取失敗或連結無效"); return renderList(); }
   renderEdit(false);
 }
 
@@ -366,6 +426,8 @@ function renderEdit(isNew){
         <button class="btn ghost" style="flex:0 0 auto;" onclick="addMember()">＋</button>
       </div>
     </div>
+
+    ${CLOUD && current.shareToken ? `<button class="btn ghost block" style="margin-bottom:14px;" onclick="shareInvite()">🔗 邀請朋友一起記（傳連結）</button>` : ''}
 
     <div class="card">
       <div class="sect-title">消費項目（${items.length}）</div>
@@ -423,10 +485,25 @@ function itemRowHTML(it){
   </div>`;
 }
 
+let _saveChain = Promise.resolve();
 function persistCurrent(){
-  current.title = $("#gTitle") ? $("#gTitle").value.trim() : current.title;
-  current.date  = $("#gDate")  ? $("#gDate").value : current.date;
-  Store.upsert(current);
+  if($("#gTitle")) current.title = $("#gTitle").value.trim();
+  if($("#gDate"))  current.date  = $("#gDate").value;
+  // 序列化儲存（避免連續編輯時 race），UI 樂觀先渲染、存在背景進行
+  _saveChain = _saveChain.then(()=>Store.save(current)).catch(e=>{ console.error(e); toast("雲端儲存失敗"); });
+  return _saveChain;
+}
+function shareInvite(){
+  if(!current.shareToken){ toast("聚會還沒建立好"); return; }
+  const link = location.origin + location.pathname + "#g=" + current.id + "&t=" + current.shareToken;
+  const txt = `來「欸，算一下！」一起記這餐 👉 ${link}`;
+  if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
+    liff.shareTargetPicker([{type:"text", text:txt}]).then(()=>toast("已開啟分享")).catch(()=>toast("分享取消"));
+  } else if(navigator.share){
+    navigator.share({title:"欸，算一下！", text:txt}).catch(()=>{});
+  } else if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(link).then(()=>toast("已複製邀請連結，貼給朋友")).catch(()=>fallbackCopy(link));
+  } else fallbackCopy(link);
 }
 
 function addMember(){
@@ -449,9 +526,10 @@ function removeMember(id, ev){
   persistCurrent();
   renderEdit(false);
 }
-function deleteGathering(){
+async function deleteGathering(){
   if(!confirm("確定刪除這場聚會？無法復原。")) return;
-  Store.remove(current.id);
+  try{ await Store.remove(current.id); }
+  catch(e){ console.error(e); toast("刪除失敗"); return; }
   renderList();
 }
 
@@ -754,18 +832,27 @@ $("#backBtn").addEventListener("click", ()=>{
 $("#addGatheringBtn").addEventListener("click", newGathering);
 
 /* =========================================================================
- * LIFF 初始化（沒填 LIFF_ID 或非 LINE 環境也能正常用）
+ * 啟動：初始化 LIFF（有設定才跑）→ 處理分享連結 #g=<id>&t=<token> → 否則列表
  * ========================================================================= */
-async function initLiff(){
-  if(!LIFF_ID || typeof liff==="undefined"){ renderList(); return; }
-  try{
-    await liff.init({liffId: LIFF_ID});
-    liffReady = true;
-    inLineClient = liff.isInClient();
-  }catch(e){ console.warn("LIFF init failed:", e); }
+async function boot(){
+  if(LIFF_ID && typeof liff!=="undefined"){
+    try{ await liff.init({liffId: LIFF_ID}); liffReady = true; inLineClient = liff.isInClient(); }
+    catch(e){ console.warn("LIFF init failed:", e); }
+  }
+  const h = new URLSearchParams((location.hash||"").replace(/^#/,""));
+  const gid = h.get("g"), tok = h.get("t");
+  if(CLOUD && gid && tok){
+    $("#title").textContent = "載入中…";
+    $("#main").innerHTML = `<div class="empty"><div class="big">⏳</div><div>載入聚會中…</div></div>`;
+    try{
+      const g = await Store.get(gid, tok);
+      if(g){ Store.putIdx(g); current = g; renderEdit(false); return; }
+    }catch(e){ console.error(e); }
+    toast("連結無效或已被刪除");
+  }
   renderList();
 }
-initLiff();
+boot();
 </script>
 </body>
 </html>
