@@ -498,7 +498,7 @@ function renderEdit(isNew){
 }
 let _persistTimer = null;
 function debouncedPersist(){ clearTimeout(_persistTimer); _persistTimer = setTimeout(()=>persistCurrent(), 500); }
-function finishEdit(){ persistCurrent(); toast("已儲存"); renderList(); }
+async function finishEdit(){ await persistCurrent(); toast("已儲存"); renderList(); }
 
 function itemRowHTML(it){
   const sn = (it.sharerIds||[]).length;
@@ -914,9 +914,9 @@ function shareToLine(){
 /* =========================================================================
  * 返回 / 路由
  * ========================================================================= */
-$("#backBtn").addEventListener("click", ()=>{
+$("#backBtn").addEventListener("click", async ()=>{
   if(view==="result") renderEdit(false);
-  else if(view==="edit"){ if(editDraftItem||editDraftAdj){ editDraftItem=null; editDraftAdj=null; renderEdit(false); } else { persistCurrent(); renderList(); } }
+  else if(view==="edit"){ if(editDraftItem||editDraftAdj){ editDraftItem=null; editDraftAdj=null; renderEdit(false); } else { await persistCurrent(); renderList(); } }
   else renderList();
 });
 $("#addGatheringBtn").addEventListener("click", newGathering);
