@@ -268,61 +268,44 @@ function rowToGathering(row, token){
   };
 }
 
+// g_list 回 setof（多列）；其餘 RPC 回單列
+async function rpcRows(name, args){
+  const { data, error } = await sb.rpc(name, args);
+  if(error) throw error;
+  return Array.isArray(data) ? data : (data ? [data] : []);
+}
+
+// 身分制：所有操作帶 ACCESS_TOKEN，後端用它驗證 LINE 身分
 const Store = {
-  IDX: "aa_index_v1",
-  LKEY: "aa_split_gatherings_v1",   // localStorage 模式的完整資料
-  _idx(){ try{ return JSON.parse(localStorage.getItem(this.IDX)) || []; }catch(e){ return []; } },
-  _saveIdx(a){ localStorage.setItem(this.IDX, JSON.stringify(a)); },
-  putIdx(g){
-    const a = this._idx().filter(x=>x.id!==g.id);
-    a.unshift({ id:g.id, token:g.shareToken, title:g.title, date:g.date,
-                n:(g.members||[]).length, count:(g.items||[]).length,
-                total: grandTotal(g.items, g.adjustments), updatedAt:Date.now() });
-    this._saveIdx(a);
+  async list(){   // 我有份的聚會（owner 或成員），跟身分跑
+    const rows = await rpcRows("g_list", { p_access_token: ACCESS_TOKEN });
+    return rows.map(r => ({
+      id: r.id, title: r.title, date: r.event_date,
+      n: (r.participants||[]).length, count: (r.items||[]).length,
+      total: grandTotal(r.items, r.adjustments), updatedAt: r.updated_at
+    }));
   },
-  rmIdx(id){ this._saveIdx(this._idx().filter(x=>x.id!==id)); },
-  tokenOf(id){ return (this._idx().find(x=>x.id===id)||{}).token; },
-
-  list(){ return this._idx().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)); },
-
   async create(g){
-    if(CLOUD){
-      const row = await rpc("create_gathering", { p_title:g.title||null, p_event_date:g.date||null, p_currency:g.currency||"TWD" });
-      g.id = row.id; g.shareToken = row.share_token;
-    } else { g.id = uid(); g.shareToken = uid(); this._lput(g); }
-    this.putIdx(g);
-    return g;
+    const row = await rpc("g_create", { p_access_token: ACCESS_TOKEN, p_title:g.title||null,
+      p_event_date:g.date||null, p_currency:g.currency||"TWD", p_my_name: MY_NAME||"我", p_my_member_id: uid() });
+    return rowToGathering(row);
   },
   async save(g){
-    if(CLOUD){
-      await rpc("save_gathering", {
-        p_id:g.id, p_token:g.shareToken, p_title:g.title||null, p_event_date:g.date||null,
-        p_currency:g.currency||"TWD", p_status:g.status||"open",
-        p_participants:g.members||[], p_items:g.items||[], p_adjustments:g.adjustments||[], p_settlements:g.settlements||[]
-      });
-    } else { this._lput(g); }
-    this.putIdx(g);
-    return g;
+    const row = await rpc("g_save", { p_id:g.id, p_access_token: ACCESS_TOKEN, p_title:g.title||null,
+      p_event_date:g.date||null, p_currency:g.currency||"TWD", p_status:g.status||"open",
+      p_participants:g.members||[], p_items:g.items||[], p_adjustments:g.adjustments||[], p_settlements:g.settlements||[] });
+    return rowToGathering(row);
   },
-  async get(id, token){
-    if(CLOUD){
-      const t = token || this.tokenOf(id);
-      const row = await rpc("get_gathering", { p_id:id, p_token:t });
-      return row ? rowToGathering(row, t) : null;
-    }
-    return this._lget(id);
+  async get(id, token){   // 成員可讀；或持邀請 token 可讀（尚未加入）
+    const row = await rpc("g_get", { p_id:id, p_token: token||null, p_access_token: ACCESS_TOKEN });
+    return row ? rowToGathering(row, token) : null;
   },
-  async remove(id){
-    if(CLOUD){ await rpc("delete_gathering", { p_id:id, p_token:this.tokenOf(id) }); }
-    else { this._save(this._all().filter(g=>g.id!==id)); }
-    this.rmIdx(id);
+  async join(id, token){  // 邀請流程：把我加進去
+    const row = await rpc("g_join", { p_id:id, p_token:token, p_access_token: ACCESS_TOKEN,
+      p_my_name: MY_NAME||"我", p_my_member_id: uid() });
+    return rowToGathering(row, token);
   },
-
-  // ---- localStorage 模式（無金鑰時的退路）----
-  _all(){ try{ return JSON.parse(localStorage.getItem(this.LKEY)) || []; }catch(e){ return []; } },
-  _save(list){ localStorage.setItem(this.LKEY, JSON.stringify(list)); },
-  _lput(g){ const l=this._all().filter(x=>x.id!==g.id); l.push(g); this._save(l); },
-  _lget(id){ return this._all().find(g=>g.id===id) || null; }
+  async remove(id){ await rpc("g_delete", { p_id:id, p_access_token: ACCESS_TOKEN }); }
 };
 
 /* =========================================================================
@@ -335,13 +318,19 @@ const money = n => "$" + Math.round(n).toLocaleString("en-US");
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
 let liffReady = false, inLineClient = false;
+let ACCESS_TOKEN = null, MY_UID = null, MY_NAME = null;   // 身分（LINE 登入後填）
 let view = "list";          // list | edit | result
 let current = null;         // 編輯中的聚會
 let editDraftItem = null;   // 正在新增/編輯的項目
 let editDraftAdj = null;     // 正在新增/編輯的服務費/折扣
 
-// 認自己：每場聚會在本機記住「我是哪位成員」，新項目自動帶我當付款人
-function getMe(){ return (current && current.id) ? localStorage.getItem("aa_me_"+current.id) : null; }
+// 認自己：優先用我的 LINE uid 對應的成員；否則用本機手動選的
+function getMe(){
+  if(!current || !current.members) return null;
+  const byUid = MY_UID && current.members.find(m=>m.uid===MY_UID);
+  if(byUid) return byUid.id;
+  return current.id ? localStorage.getItem("aa_me_"+current.id) : null;
+}
 function setMe(pid){ if(current && current.id) localStorage.setItem("aa_me_"+current.id, pid); }
 function setMeAndRerender(pid){ setMe(pid); renderEdit(false); }
 
@@ -349,11 +338,12 @@ function toast(msg){
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(t._tm); t._tm = setTimeout(()=>t.classList.remove("show"), 1800);
 }
+const loadingHTML = (msg) => `<div class="empty"><div class="big">⏳</div><div>${msg||"載入中…"}</div></div>`;
 
 /* =========================================================================
- * 畫面：聚會列表
+ * 畫面：聚會列表（我有份的，從雲端依身分取得）
  * ========================================================================= */
-function renderList(){
+async function renderList(){
   view = "list";
   current = null;
   unsubscribeRealtime();
@@ -361,14 +351,18 @@ function renderList(){
   $("#title").textContent = "欸，算一下！";
   $("#backBtn").classList.add("hidden");
   $("#addGatheringBtn").classList.remove("hidden");
+  $("#main").innerHTML = loadingHTML();
 
-  const gs = Store.list();
+  let gs;
+  try{ gs = await Store.list(); }
+  catch(e){ console.error(e); $("#main").innerHTML = `<div class="empty"><div class="big">⚠️</div><div>讀取清單失敗</div><div class="spacer"></div><button class="btn ghost" onclick="renderList()">重試</button></div>`; return; }
+
   if(gs.length === 0){
     $("#main").innerHTML = `
       <div class="empty">
         <div class="big">🧾</div>
         <div>還沒有任何聚會</div>
-        <div class="faint" style="margin-top:6px;">建立一場聚會，把消費丟進去，自動算出誰付誰多少</div>
+        <div class="faint" style="margin-top:6px;">建立一場、或請朋友把邀請連結傳給你</div>
         <div class="spacer"></div><div class="spacer"></div>
         <button class="btn" onclick="newGathering()">＋ 建立第一場聚會</button>
       </div>`;
@@ -386,19 +380,19 @@ function renderList(){
 }
 
 async function newGathering(){
-  const g = { id:null, shareToken:null, title:"", date:todayStr(), currency:"TWD",
-              status:"open", members:[], items:[], adjustments:[], settlements:[] };
-  try{ await Store.create(g); }
+  const g = { title:"", date:todayStr(), currency:"TWD" };
+  let created;
+  try{ created = await Store.create(g); }
   catch(e){ console.error(e); toast("建立失敗，檢查網路"); return; }
-  current = g;
-  subscribeRealtime(g.id);
+  current = created;
+  subscribeRealtime(current.id);
   renderEdit(true);
 }
 async function openGathering(id){
-  $("#main").innerHTML = `<div class="empty"><div class="big">⏳</div><div>載入中…</div></div>`;
-  try{ current = await Store.get(id); }
+  $("#main").innerHTML = loadingHTML();
+  try{ current = await Store.get(id, null); }
   catch(e){ console.error(e); current = null; }
-  if(!current){ toast("讀取失敗或連結無效"); return renderList(); }
+  if(!current){ toast("讀取失敗"); return renderList(); }
   subscribeRealtime(current.id);
   renderEdit(false);
 }
@@ -555,7 +549,8 @@ async function applySync(){
 }
 function shareInvite(){
   if(!current.shareToken){ toast("聚會還沒建立好"); return; }
-  const link = location.origin + location.pathname + "#g=" + current.id + "&t=" + current.shareToken;
+  // 用 LIFF 網址 + query，讓對方在 LINE 內開啟並登入；hash 在登入轉址會掉
+  const link = `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}`;
   const txt = `來「欸，算一下！」一起記這餐 👉 ${link}`;
   if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
     liff.shareTargetPicker([{type:"text", text:txt}]).then(()=>toast("已開啟分享")).catch(()=>toast("分享取消"));
@@ -894,21 +889,72 @@ $("#backBtn").addEventListener("click", ()=>{
 $("#addGatheringBtn").addEventListener("click", newGathering);
 
 /* =========================================================================
- * 啟動：初始化 LIFF（有設定才跑）→ 處理分享連結 #g=<id>&t=<token> → 否則列表
+ * 邀請加入畫面：持有效連結但還不是成員 → 問要不要加入
+ * ========================================================================= */
+function showLoginError(msg){
+  $("#backBtn").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
+  $("#main").innerHTML = `<div class="empty"><div class="big">🔒</div><div>${esc(msg)}</div>
+    <div class="faint" style="margin-top:8px;">請用 LINE 開啟：<br>liff.line.me/${LIFF_ID}</div></div>`;
+}
+let _invite = null;
+function showJoinPrompt(g, token){
+  _invite = { id:g.id, token };
+  view = "join";
+  $("#title").textContent = "邀請加入";
+  $("#backBtn").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
+  const tot = grandTotal(g.items, g.adjustments);
+  $("#main").innerHTML = `
+    <div class="card" style="text-align:center;">
+      <div style="font-size:40px;">🧾</div>
+      <div style="font-size:19px;font-weight:700;margin-top:6px;">${esc(g.title||"未命名聚會")}</div>
+      <div class="faint" style="margin-top:4px;">${esc(g.date||"")} ・ ${(g.members||[]).length} 人 ・ 總額 ${money(tot)}</div>
+      <div class="muted" style="margin-top:14px;">你被邀請加入這場分帳。加入後它會出現在你的聚會列表，你也能新增自己的支出。</div>
+    </div>
+    <button class="btn block" onclick="acceptJoin()">加入這場聚會</button>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="declineJoin()">先不要</button>`;
+}
+async function acceptJoin(){
+  if(!_invite) return;
+  $("#main").innerHTML = loadingHTML("加入中…");
+  try{ current = await Store.join(_invite.id, _invite.token); }
+  catch(e){ console.error(e); toast("加入失敗"); return renderList(); }
+  history.replaceState(null, "", location.pathname);   // 清掉 hash 邀請參數
+  _invite = null;
+  subscribeRealtime(current.id);
+  renderEdit(false);
+}
+function declineJoin(){ _invite=null; history.replaceState(null,"",location.pathname); renderList(); }
+
+/* =========================================================================
+ * 啟動：LINE 登入（必須）→ 邀請連結 #g&t（成員直接開／非成員問加入）→ 否則我的列表
  * ========================================================================= */
 async function boot(){
-  if(LIFF_ID && typeof liff!=="undefined"){
-    try{ await liff.init({liffId: LIFF_ID}); liffReady = true; inLineClient = liff.isInClient(); }
-    catch(e){ console.warn("LIFF init failed:", e); }
-  }
-  const h = new URLSearchParams((location.hash||"").replace(/^#/,""));
-  const gid = h.get("g"), tok = h.get("t");
-  if(CLOUD && gid && tok){
+  try{
+    if(typeof liff==="undefined" || !LIFF_ID){ showLoginError("這個 app 需要在 LINE 內開啟"); return; }
+    await liff.init({ liffId: LIFF_ID });
+    inLineClient = liff.isInClient();
+    if(!liff.isLoggedIn()){ liff.login(); return; }   // 導向 LINE 登入後返回
+    liffReady = true;
+    const prof = await liff.getProfile();
+    MY_UID = prof.userId; MY_NAME = prof.displayName || "我";
+    ACCESS_TOKEN = liff.getAccessToken();
+  }catch(e){ console.error("LIFF login failed:", e); showLoginError("LINE 登入失敗，請重開或在 LINE 內開啟"); return; }
+  if(!ACCESS_TOKEN){ showLoginError("拿不到 LINE 登入資訊，請在 LINE 內開啟"); return; }
+
+  const qp = new URLSearchParams(location.search || "");
+  const hp = new URLSearchParams((location.hash||"").replace(/^#/,""));
+  const gid = qp.get("g") || hp.get("g");
+  const tok = qp.get("t") || hp.get("t");
+  if(gid && tok){
     $("#title").textContent = "載入中…";
-    $("#main").innerHTML = `<div class="empty"><div class="big">⏳</div><div>載入聚會中…</div></div>`;
+    $("#main").innerHTML = loadingHTML("載入聚會中…");
     try{
       const g = await Store.get(gid, tok);
-      if(g){ Store.putIdx(g); current = g; subscribeRealtime(g.id); renderEdit(false); return; }
+      if(g){
+        if((g.members||[]).some(m=>m.uid===MY_UID)){ current=g; subscribeRealtime(g.id); renderEdit(false); return; }
+        showJoinPrompt(g, tok); return;
+      }
     }catch(e){ console.error(e); }
     toast("連結無效或已被刪除");
   }
