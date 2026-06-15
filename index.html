@@ -145,6 +145,8 @@
   #resultCard .rc-total b{display:block; font-size:22px; color:var(--ink); font-weight:750;}
   .rc-block{margin-top:18px;}
   .rc-block .h{font-size:12px; letter-spacing:.05em; color:var(--faint); text-transform:uppercase; margin-bottom:9px;}
+  .rec-tr{display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:14.5px; padding:5px 0;}
+  .rec-tr .num{font-weight:700; color:var(--get); flex:0 0 auto;}
   .person{display:flex; align-items:center; justify-content:space-between; padding:7px 0; font-size:15px;}
   .person .nm{flex:1;}
   .person .ow{color:var(--muted); width:120px; text-align:right;}
@@ -440,7 +442,7 @@ function grandTotal(items, adjustments){
   return sub + adjustTotal(sub, adjustments);
 }
 
-function computeSplit(members, items, adjustments){
+function computeSplit(members, items, adjustments, recordedTransfers){
   const ids = members.map(m => m.id);
   const nameOf = Object.fromEntries(members.map(m => [m.id, m.name]));
 
@@ -486,6 +488,12 @@ function computeSplit(members, items, adjustments){
 
   // 淨值 = 已付 − 應付
   const net = Object.fromEntries(ids.map(id => [id, paid[id] - owe[id]]));
+
+  // 已記錄的實際轉帳/還款：付款人淨值 +、收款人淨值 −（零和），淨值變成「還剩多少要喬」
+  for(const t of (recordedTransfers||[])){
+    const amt = Number(t.amount)||0;
+    if(amt>0 && t.from in net && t.to in net){ net[t.from] += amt; net[t.to] -= amt; }
+  }
 
   // 整數化淨值，殘差丟給最大收款人（零頭吸收），保證總和 = 0
   const netR = Object.fromEntries(ids.map(id => [id, Math.round(net[id])]));
@@ -556,7 +564,7 @@ function rowToGathering(row, token){
     currency: row.currency || "TWD", status: row.status || "open",
     members: row.participants || [], items: row.items || [],
     adjustments: row.adjustments || [], settlements: row.settlements || [],
-    history: row.history || [], cover: row.cover || ''
+    history: row.history || [], cover: row.cover || '', transfers: row.transfers || []
   };
 }
 
@@ -586,7 +594,7 @@ const Store = {
     const row = await rpc("g_save", { p_id:g.id, p_access_token: ACCESS_TOKEN, p_title:g.title||null,
       p_event_date:g.date||null, p_currency:g.currency||"TWD", p_status:g.status||"open",
       p_participants:g.members||[], p_items:g.items||[], p_adjustments:g.adjustments||[], p_settlements:g.settlements||[],
-      p_history:g.history||[], p_cover:g.cover||"" });
+      p_history:g.history||[], p_cover:g.cover||"", p_transfers:g.transfers||[] });
     return rowToGathering(row);
   },
   async get(id, token){   // 成員可讀；或持邀請 token 可讀（尚未加入）
@@ -644,7 +652,8 @@ const ICONS = {
   members: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8" r="3"/><path d="M3 19c0-3 2.4-5 5.5-5s5.5 2 5.5 5"/><path d="M16 5.7a2.8 2.8 0 0 1 0 5.3"/><path d="M17.2 14.1c2 .5 3.3 2.1 3.3 4.4"/></svg>`,
   invite: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3 2.4-5 5.5-5s5.5 2 5.5 5"/><line x1="18.5" y1="6.5" x2="18.5" y2="12.5"/><line x1="15.5" y1="9.5" x2="21.5" y2="9.5"/></svg>`,
   calc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><line x1="8.5" y1="6.8" x2="15.5" y2="6.8"/><circle cx="9.2" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="9.2" cy="16.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="16.2" r="1.1" fill="currentColor" stroke="none"/></svg>`,
-  percent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="6.5" y1="17.5" x2="17.5" y2="6.5"/><circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="16" r="2.2"/></svg>`
+  percent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="6.5" y1="17.5" x2="17.5" y2="6.5"/><circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="16" r="2.2"/></svg>`,
+  transfer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/></svg>`
 };
 
 // 品項分類：各類別一個專屬顏色 + 單色線條圖示；打品名自動猜、可手動改
@@ -738,6 +747,7 @@ let current = null;         // 編輯中的聚會
 let editDraftItem = null;   // 正在新增/編輯的項目
 let _coverAdjust = false;   // 封面調整位置模式
 let editDraftAdj = null;     // 正在新增/編輯的服務費/折扣
+let editDraftTransfer = null; // 正在新增/編輯的轉帳/還款
 
 // 認自己：優先用我的 LINE uid 對應的成員；否則用本機手動選的
 function getMe(){
@@ -922,6 +932,7 @@ function renderEdit(isNew){
 
   const m = current.members, items = current.items;
   const adjs = current.adjustments || (current.adjustments = []);
+  const trs = current.transfers || (current.transfers = []);
   const sub = itemsTotal(items);
   const tot = grandTotal(items, adjs);
   const canCompute = items.length>0 && tot>0;
@@ -961,6 +972,14 @@ function renderEdit(isNew){
       ${adjs.length>0 ? `<div class="recon" style="margin-top:10px;color:var(--muted);background:var(--panel2);">小計 ${money(sub)}　→　總額 ${money(tot)}</div>` : ''}
       <div class="spacer"></div>
       <button class="btn ghost block" onclick="startAddAdj()" ${items.length===0?'disabled style="opacity:.45"':''}>＋ 服務費 / 折扣</button>
+    </div>
+
+    <div class="card">
+      <div class="sect-title">轉帳 / 還款（${trs.length} 筆）</div>
+      <div class="faint" style="margin:-2px 2px 8px;">記下誰實際把錢轉給誰；分帳結果會自動扣掉、算出還剩多少要喬。</div>
+      ${trs.length ? trs.map(t=>transferRowHTML(t)).join("") : '<div class="faint" style="padding:4px 2px;">還沒有轉帳紀錄。</div>'}
+      <div class="spacer"></div>
+      <button class="btn ghost block" onclick="startAddTransfer()" ${m.length<2?'disabled style="opacity:.45"':''}>＋ 記一筆轉帳</button>
     </div>
 
     <button class="btn block" onclick="goResult()" ${canCompute?'':'disabled style="opacity:.45"'}><span class="bico">${ICONS.calc}</span>算分帳 →</button>
@@ -1128,7 +1147,7 @@ function broadcastChanged(id){
 async function onRemoteChange(id){
   if(!current || current.id !== id) return;
   // 在編輯主畫面、沒開子表單 → 直接拉最新套用；否則顯示橫幅讓使用者自己點（不打斷他輸入）
-  if(view === "edit" && !editDraftItem && !editDraftAdj){
+  if(view === "edit" && !editDraftItem && !editDraftAdj && !editDraftTransfer){
     try{ const fresh = await Store.get(id, current.shareToken); if(fresh){ current = fresh; renderEdit(false); toast("已同步最新"); } }catch(e){}
   } else {
     showSyncBanner(id);
@@ -1510,7 +1529,7 @@ async function deleteItem(){
   renderEdit(false);
 }
 
-function cancelDraft(){ editDraftItem=null; editDraftAdj=null; renderEdit(false); }
+function cancelDraft(){ editDraftItem=null; editDraftAdj=null; editDraftTransfer=null; renderEdit(false); }
 
 /* ---- 整單調整層：服務費 / 折扣 ---- */
 function adjRowHTML(a, sub){
@@ -1595,6 +1614,71 @@ async function deleteAdj(){
   editDraftAdj=null; persistCurrent(); renderEdit(false);
 }
 
+/* ---- 轉帳 / 還款：記錄誰實際轉給誰，分帳結果自動扣掉 ---- */
+const _memName = id => { const p=(current.members||[]).find(x=>x.id===id); return p?p.name:'?'; };
+function transferRowHTML(t){
+  return `<div class="itemrow" onclick="startEditTransfer('${t.id}')">
+    <div class="caticon" style="color:var(--accent)">${ICONS.transfer}</div>
+    <div class="info">
+      <div class="nm"><b style="color:var(--pay)">${esc(_memName(t.from))}</b> → <b style="color:var(--get)">${esc(_memName(t.to))}</b></div>
+      ${t.note?`<div class="sub">📝 ${esc(t.note)}</div>`:''}
+    </div>
+    <div class="price num" style="color:var(--get)">${money(t.amount)}</div>
+    <div class="faint">›</div>
+  </div>`;
+}
+function startAddTransfer(){
+  if(current.members.length<2){ toast('至少要兩個人才能記轉帳'); return; }
+  const meId = getMe() || current.members[0].id;
+  const other = current.members.find(x=>x.id!==meId);
+  editDraftTransfer = { id:uid(), from:meId, to:(other?other.id:meId), amount:'', note:'', _isNew:true };
+  renderTransferForm();
+}
+function startEditTransfer(id){
+  const t = (current.transfers||[]).find(x=>x.id===id); if(!t) return;
+  editDraftTransfer = JSON.parse(JSON.stringify(t)); renderTransferForm();
+}
+function renderTransferForm(){
+  const d = editDraftTransfer, m = current.members;
+  const opts = sel => m.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.name)}</option>`).join('');
+  $("#main").innerHTML = `
+    <div class="card">
+      <div class="sect-title">${d._isNew?'記一筆轉帳 / 還款':'編輯轉帳'}</div>
+      <div class="faint" style="margin:-2px 2px 12px;">誰實際把錢轉給誰（例：事後還款）。分帳結果會自動扣掉這筆。</div>
+      <label class="fld"><span>誰轉出（付錢）</span><select id="trFrom">${opts(d.from)}</select></label>
+      <label class="fld"><span>轉給誰（收錢）</span><select id="trTo">${opts(d.to)}</select></label>
+      <label class="fld"><span>金額</span>
+        <input id="trAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>
+      <label class="fld"><span>備註（選填）</span><input id="trNote" placeholder="例如：6/20 用 LINE Pay 還" value="${esc(d.note||'')}"></label>
+    </div>
+    <div class="row">
+      <button class="btn ghost" onclick="cancelDraft()">取消</button>
+      <button class="btn" onclick="saveTransfer()">儲存</button>
+    </div>
+    ${d._isNew?'':'<div class="spacer"></div><button class="btn danger block" onclick="deleteTransfer()">刪除這筆</button>'}
+  `;
+}
+function saveTransfer(){
+  const d = editDraftTransfer;
+  d.from = $("#trFrom").value; d.to = $("#trTo").value;
+  d.amount = Number($("#trAmt").value)||0; d.note = ($("#trNote").value||'').trim();
+  if(d.from===d.to){ toast('轉出和收款不能是同一人'); return; }
+  if(d.amount<=0){ toast('金額要大於 0'); return; }
+  const isNew = d._isNew; delete d._isNew;
+  current.transfers = current.transfers || [];
+  const i = current.transfers.findIndex(x=>x.id===d.id);
+  if(i>=0) current.transfers[i]=d; else current.transfers.push(d);
+  logHistory(`${isNew?'記一筆轉帳':'改轉帳'}：${_memName(d.from)}→${_memName(d.to)} ${money(d.amount)}`);
+  editDraftTransfer=null; persistCurrent(); renderEdit(false);
+}
+async function deleteTransfer(){
+  if(!await uiConfirm('刪除這筆轉帳紀錄？', {danger:true})) return;
+  const d = editDraftTransfer;
+  current.transfers = (current.transfers||[]).filter(x=>x.id!==d.id);
+  logHistory(`刪除轉帳：${_memName(d.from)}→${_memName(d.to)} ${money(d.amount)}`);
+  editDraftTransfer=null; persistCurrent(); renderEdit(false);
+}
+
 /* =========================================================================
  * 畫面：分帳結果
  * ========================================================================= */
@@ -1611,7 +1695,7 @@ function renderResult(){
   $("#brandIcon").classList.add("hidden");
   $("#addGatheringBtn").classList.add("hidden");
 
-  const r = computeSplit(current.members, current.items, current.adjustments);
+  const r = computeSplit(current.members, current.items, current.adjustments, current.transfers);
   lastResult = r;
   const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
 
@@ -1699,8 +1783,13 @@ function renderResult(){
         ${peopleRows}
       </div>
 
+      ${(current.transfers&&current.transfers.length) ? `<div class="rc-block">
+        <div class="h">已記錄的轉帳 / 還款（${current.transfers.length} 筆）</div>
+        ${current.transfers.map(t=>`<div class="rec-tr"><span><b style="color:var(--get)">${esc(_memName(t.from))}</b> → <b style="color:var(--get)">${esc(_memName(t.to))}</b>${t.note?` <span class="faint">・${esc(t.note)}</span>`:''}</span><span class="num">${money(t.amount)}</span></div>`).join("")}
+      </div>` : ''}
+
       <div class="rc-block">
-        <div class="h">最少轉帳 ${r.transfers.length>0?`（${r.transfers.length} 筆）`:''}</div>
+        <div class="h">${(current.transfers&&current.transfers.length)?'還要喬（最少轉帳）':'最少轉帳'} ${r.transfers.length>0?`（${r.transfers.length} 筆）`:''}</div>
         ${transferRows}
       </div>
       ${verify}
@@ -1778,8 +1867,12 @@ function resultText(){
     const tag = net>0?`該收 ${money(net)}`:(net<0?`該付 ${money(-net)}`:"打平");
     s += `・${p.name}：應付 ${money(r.owe[p.id])}（${tag}）\n`;
   }
-  s += `\n💸 最少轉帳\n`;
-  if(r.transfers.length===0) s += `・大家剛好打平，免轉帳 🎉\n`;
+  if(current.transfers && current.transfers.length){
+    s += `\n🔁 已記錄的轉帳/還款\n`;
+    for(const t of current.transfers) s += `・${_memName(t.from)} → ${_memName(t.to)}：${money(t.amount)}${t.note?`（${t.note}）`:""}\n`;
+  }
+  s += `\n💸 ${(current.transfers&&current.transfers.length)?'還要喬（最少轉帳）':'最少轉帳'}\n`;
+  if(r.transfers.length===0) s += `・${(current.transfers&&current.transfers.length)?'都喬平了，免再轉 🎉':'大家剛好打平，免轉帳 🎉'}\n`;
   else for(const t of r.transfers){
     const st = smap[t.from+">"+t.to] || {};
     const mark = st.confirmed ? " ✅已確認收款" : (st.paid ? " ⏳已付待確認" : "");
