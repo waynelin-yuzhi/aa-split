@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1115">
 <link rel="icon" type="image/svg+xml" href="app_icon.svg">
 <link rel="apple-touch-icon" href="app_icon.svg">
-<meta name="description" content="簡單好用的多人分帳小工具，點開就能加入聚會、各自記支出、自動算出最少轉帳。">
+<meta name="description" content="簡單好用的多人分帳小工具，點開就能加入帳本、各自記支出、自動算出最少轉帳。">
 <meta property="og:title" content="欸，算一下！ Let's Split">
 <meta property="og:description" content="簡單好用的多人分帳小工具，點開就能加入。">
 <meta property="og:type" content="website">
@@ -203,7 +203,7 @@
     <button id="backBtn" class="iconbtn hidden" aria-label="返回">‹</button>
     <img id="brandIcon" class="brand-icon" src="logo_icon.svg" alt="">
     <h1 id="title">欸，算一下！</h1>
-    <button id="addGatheringBtn" class="btn sm hidden">＋ 新聚會</button>
+    <button id="addGatheringBtn" class="btn sm hidden">＋ 新帳本</button>
     <div id="avatarBtn" class="avatar-btn hidden" onclick="openProfile()" title="個人設定"></div>
   </header>
   <main id="main"></main>
@@ -218,11 +218,11 @@
     </div>
     <label class="fld"><span>我的收款資訊（給人轉帳用，選填）</span>
       <input id="pmPay" placeholder="例：國泰 700-1234567 / LINE Pay 連結"></label>
-    <div class="faint" style="margin:-2px 2px 14px;">設定後，你建立或加入的聚會會自動帶上，結算時別人看得到、可一鍵複製。</div>
+    <div class="faint" style="margin:-2px 2px 14px;">設定後，你建立或加入的帳本會自動帶上，結算時別人看得到、可一鍵複製。</div>
     <button class="btn block" onclick="saveProfile()">儲存</button>
     <hr class="sep">
     <button class="btn ghost block" onclick="shareApp()">分享這個 App 給朋友</button>
-    <div class="faint" style="margin:8px 2px 0;">分享純 App 連結，朋友點開用自己的 LINE 登入、各記各的（不是把人加進某場聚會）。</div>
+    <div class="faint" style="margin:8px 2px 0;">分享純 App 連結，朋友點開用自己的 LINE 登入、各記各的（不是把人加進某本帳本）。</div>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeProfile()">關閉</button>
   </div>
@@ -468,6 +468,10 @@ const $ = sel => document.querySelector(sel);
 const esc = s => String(s??"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = n => "$" + Math.round(n).toLocaleString("en-US");
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+// datetime-local 用：本地「現在」YYYY-MM-DDTHH:mm
+const nowLocal = () => { const d=new Date(), p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+// 顯示用：YYYY-MM-DDTHH:mm → M/D HH:mm
+const fmtAt = at => { if(!at) return ''; const [d,t]=String(at).split('T'); if(!d) return ''; const [,mo,da]=d.split('-'); return `${+mo}/${+da}${t?(' '+t):''}`; };
 
 // UI 線條圖示（薄荷色、圓角，呼應品牌收據+勾的調性；用 currentColor 繼承按鈕色）
 const ICONS = {
@@ -561,10 +565,10 @@ async function renderList(){
     $("#main").innerHTML = `
       <div class="empty">
         <img class="logo-mark" src="logo_icon.svg" alt="">
-        <div style="margin-top:10px;">還沒有任何聚會</div>
-        <div class="faint" style="margin-top:6px;">建立一場、或請朋友把邀請連結傳給你</div>
+        <div style="margin-top:10px;">還沒有任何帳本</div>
+        <div class="faint" style="margin-top:6px;">建立一本、或請朋友把邀請連結傳給你</div>
         <div class="spacer"></div><div class="spacer"></div>
-        <button class="btn" onclick="newGathering()">＋ 建立第一場聚會</button>
+        <button class="btn" onclick="newGathering()">＋ 建立第一本帳本</button>
       </div>`;
     return;
   }
@@ -574,7 +578,7 @@ async function renderList(){
     <div class="listrow" data-id="${g.id}" onclick="openGathering('${g.id}')">
       <div class="drag" aria-label="拖曳排序">${grip}</div>
       <div class="meta">
-        <div class="t">${esc(g.title||"未命名聚會")}</div>
+        <div class="t">${esc(g.title||"未命名帳本")}</div>
         <div class="s">${esc(g.date||"")} ・ ${g.n||0} 人 ・ ${g.count||0} 筆</div>
       </div>
       <div class="amt num">${money(g.total||0)}</div>
@@ -666,7 +670,7 @@ async function openGathering(id){
  * ========================================================================= */
 function renderEdit(isNew){
   view = "edit";
-  $("#title").textContent = isNew ? "新聚會" : "編輯聚會";
+  $("#title").textContent = isNew ? "新帳本" : "編輯帳本";
   $("#backBtn").classList.remove("hidden");
   $("#brandIcon").classList.add("hidden");
   $("#addGatheringBtn").classList.add("hidden");
@@ -679,7 +683,7 @@ function renderEdit(isNew){
   const meId = getMe();
   $("#main").innerHTML = `
     <div class="card gsum">
-      <input id="gTitle" class="gtitle" placeholder="聚會名稱（例：六月團聚）" value="${esc(current.title)}">
+      <input id="gTitle" class="gtitle" placeholder="帳本名稱（例：墾丁旅遊 / 六月聚餐）" value="${esc(current.title)}">
       <div class="gsum-row">
         <input id="gDate" type="date" value="${esc(current.date)}">
         <span class="gsum-meta">${m.length} 人 ・ 總額 <b class="num">${money(tot)}</b></span>
@@ -697,7 +701,7 @@ function renderEdit(isNew){
       <div class="sect-title">帳目（${items.length} 筆）</div>
       <div id="itemList">
         ${items.length===0 ? '<div class="faint" style="padding:8px 2px;">還沒有帳目——點右下角的 ＋ 新增一筆</div>' :
-          items.map(it=>itemRowHTML(it)).join("")}
+          items.slice().sort((a,b)=>(a.at||'').localeCompare(b.at||'')).map(it=>itemRowHTML(it)).join("")}
       </div>
       ${adjs.length ? `<hr class="sep">${adjs.map(a=>adjRowHTML(a, sub)).join("")}` : ''}
       ${adjs.length>0 ? `<div class="recon" style="margin-top:10px;color:var(--muted);background:var(--panel2);">小計 ${money(sub)}　→　總額 ${money(tot)}</div>` : ''}
@@ -739,7 +743,7 @@ function itemRowHTML(it){
   return `<div class="itemrow" onclick="startEditItem('${it.id}')">
     <div class="info">
       <div class="nm">${esc(it.name||"未命名")}</div>
-      <div class="sub"><b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 先付 ・ ${esc(who)}${modeTag}</div>
+      <div class="sub">${it.at?`<span style="color:var(--muted)">${esc(fmtAt(it.at))}</span> ・ `:''}<b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 先付 ・ ${esc(who)}${modeTag}</div>
     </div>
     <div class="price num">${money(effectiveItemAmount(it))}</div>
     <div class="faint">›</div>
@@ -794,13 +798,13 @@ async function applySync(){
   }catch(e){ console.error(e); }
 }
 function shareInvite(){
-  if(!current.slug && !current.shareToken){ toast("聚會還沒建立好"); return; }
+  if(!current.slug && !current.shareToken){ toast("帳本還沒建立好"); return; }
   // 用 LIFF 網址 + query，讓對方在 LINE 內開啟並登入；hash 在登入轉址會掉
   // 有 slug 走短連結；沒有（舊資料）退回 id+token
   const link = current.slug
     ? `https://liff.line.me/${LIFF_ID}?g=${current.slug}`
     : `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}`;
-  const name = current.title || "未命名聚會";
+  const name = current.title || "未命名帳本";
   const txt = `欸，算一下！— 簡單好用的小工具\n邀你一起算一下，點開就能加入「${name}」\n${link}`;
   if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
     liff.shareTargetPicker([{type:"text", text:txt}]).then(()=>toast("已開啟分享")).catch(()=>toast("分享取消"));
@@ -877,7 +881,7 @@ function refreshMembersUI(){
   if(!$("#membersModal").classList.contains("hidden")) renderMembersModal();
 }
 async function deleteGathering(){
-  if(!confirm("確定刪除這場聚會？無法復原。")) return;
+  if(!confirm("確定刪除這本帳本？無法復原。")) return;
   try{ await Store.remove(current.id); }
   catch(e){ console.error(e); toast("刪除失敗"); return; }
   renderList();
@@ -889,7 +893,7 @@ function startAddItem(){
   const lastPayer = current.items.length ? current.items[current.items.length-1].payerId : null;
   const myId = getMe();
   const valid = id => current.members.some(m=>m.id===id);
-  editDraftItem = { id:uid(), name:"", amount:"",
+  editDraftItem = { id:uid(), name:"", amount:"", at: nowLocal(),
                     payerId: (valid(myId) && myId) || lastPayer || current.members[0]?.id || null,
                     sharerIds: current.members.map(m=>m.id),
                     split: { mode:"equal", values:{} }, _isNew:true };
@@ -919,6 +923,8 @@ function renderItemForm(){
             <input id="itAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>`
         : `<div class="fld"><span style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px;">金額（各人加總）</span>
             <div class="num" style="font-size:19px;font-weight:700;">${money(amountSum)}</div></div>`}
+      <label class="fld"><span>日期時間</span>
+        <input id="itAt" type="datetime-local" value="${esc(d.at||'')}"></label>
       <label class="fld"><span>誰付的錢</span>
         <select id="itPayer">
           ${m.map(p=>`<option value="${p.id}" ${p.id===d.payerId?"selected":""}>${esc(p.name)}</option>`).join("")}
@@ -952,10 +958,11 @@ function renderItemForm(){
 }
 function syncDraftInputs(){
   // 讓表單輸入即時回寫到 draft（切換 chip 重繪時不丟失）
-  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer");
+  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer"), dt=$("#itAt");
   if(n) n.oninput = ()=> editDraftItem.name = n.value;
   if(a) a.oninput = ()=> editDraftItem.amount = a.value;
   if(p) p.onchange = ()=> editDraftItem.payerId = p.value;
+  if(dt) dt.onchange = ()=> editDraftItem.at = dt.value;
   document.querySelectorAll('.splitval').forEach(inp=>{
     inp.oninput = ()=>{ editDraftItem.split.values[inp.dataset.mid] = inp.value; };
   });
@@ -981,6 +988,7 @@ function saveItem(){
   const d = editDraftItem;
   d.name = ($("#itName").value||"").trim() || "未命名";
   d.payerId = $("#itPayer").value;
+  d.at = ($("#itAt") && $("#itAt").value) || d.at || nowLocal();
   if(d.sharerIds.length===0){ toast("至少要有一個人分攤"); return; }
   const mode = (d.split && d.split.mode) || 'equal';
   if(mode==='amount'){
@@ -1154,7 +1162,7 @@ function renderResult(){
     <div id="resultCard">
       <div class="rc-head">
         <div>
-          <div class="rc-title">${esc(current.title||"未命名聚會")}</div>
+          <div class="rc-title">${esc(current.title||"未命名帳本")}</div>
           <div class="rc-sub">${esc(current.date||"")} ・ ${current.members.length} 人</div>
         </div>
         <div class="rc-total">總額<b class="num">${money(r.total)}</b></div>
@@ -1327,15 +1335,15 @@ function showJoinPrompt(g, token){
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="acceptJoin()">＋ 用我的 LINE 名字（${esc(MY_NAME||"我")}）加入</button>
   ` : `
-    <button class="btn block" onclick="acceptJoin()">加入這場聚會</button>
+    <button class="btn block" onclick="acceptJoin()">加入這本帳本</button>
   `;
   $("#main").innerHTML = `
     <div class="card" style="text-align:center;">
       <img src="logo_icon.svg" alt="" style="width:56px;height:65px;">
 
-      <div style="font-size:19px;font-weight:700;margin-top:6px;">${esc(g.title||"未命名聚會")}</div>
+      <div style="font-size:19px;font-weight:700;margin-top:6px;">${esc(g.title||"未命名帳本")}</div>
       <div class="faint" style="margin-top:4px;">${esc(g.date||"")} ・ ${(g.members||[]).length} 人 ・ 總額 ${money(tot)}</div>
-      <div class="muted" style="margin-top:14px;">你被邀請加入這場分帳。加入後它會出現在你的聚會列表，你也能新增自己的支出。</div>
+      <div class="muted" style="margin-top:14px;">你被邀請加入這本帳本。加入後它會出現在你的帳本列表，你也能新增自己的支出。</div>
     </div>
     ${joinSection}
     <div class="spacer"></div>
@@ -1395,7 +1403,7 @@ async function boot(){
   const tok = qp.get("t") || hp.get("t");
   if(gid){
     $("#title").textContent = "載入中…";
-    $("#main").innerHTML = loadingHTML("載入聚會中…");
+    $("#main").innerHTML = loadingHTML("載入帳本中…");
     try{
       // 有 t → 舊式 id+token 連結；沒 t → 新式短連結（g 即 slug）
       const g = tok ? await Store.get(gid, tok) : await Store.getBySlug(gid);
