@@ -355,7 +355,7 @@ async function rpc(name, args){
 // 雲端 row ↔ app 物件（members↔participants、date↔event_date）
 function rowToGathering(row, token){
   return {
-    id: row.id, shareToken: row.share_token || token,
+    id: row.id, shareToken: row.share_token || token, slug: row.slug || null,
     title: row.title || "", date: row.event_date || "",
     currency: row.currency || "TWD", status: row.status || "open",
     members: row.participants || [], items: row.items || [],
@@ -399,6 +399,16 @@ const Store = {
     const row = await rpc("g_join", { p_id:id, p_token:token, p_access_token: ACCESS_TOKEN,
       p_my_name: MY_NAME||"我", p_my_member_id: uid() });
     return rowToGathering(row, token);
+  },
+  async getBySlug(slug){  // 短連結讀取：成員可讀；或持邀請 slug 可讀（尚未加入）
+    // g_get_by_slug 是 sql function，查無此 slug 時回的是「整列皆 null」而非 null，故以 row.id 判斷
+    const row = await rpc("g_get_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN });
+    return (row && row.id) ? rowToGathering(row) : null;
+  },
+  async joinBySlug(slug){ // 短連結加入：把我加進去
+    const row = await rpc("g_join_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN,
+      p_my_name: MY_NAME||"我", p_my_member_id: uid() });
+    return rowToGathering(row);
   },
   async remove(id){ await rpc("g_delete", { p_id:id, p_access_token: ACCESS_TOKEN }); }
 };
@@ -675,9 +685,12 @@ async function applySync(){
   }catch(e){ console.error(e); }
 }
 function shareInvite(){
-  if(!current.shareToken){ toast("聚會還沒建立好"); return; }
+  if(!current.slug && !current.shareToken){ toast("聚會還沒建立好"); return; }
   // 用 LIFF 網址 + query，讓對方在 LINE 內開啟並登入；hash 在登入轉址會掉
-  const link = `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}`;
+  // 有 slug 走短連結；沒有（舊資料）退回 id+token
+  const link = current.slug
+    ? `https://liff.line.me/${LIFF_ID}?g=${current.slug}`
+    : `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}`;
   const name = current.title || "未命名聚會";
   const txt = `欸，算一下！— 簡單好用的小工具\n邀你一起算一下，點開就能加入「${name}」\n${link}`;
   if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
@@ -1123,7 +1136,7 @@ function showLoginError(msg){
 }
 let _invite = null;
 function showJoinPrompt(g, token){
-  _invite = { id:g.id, token };
+  _invite = { slug:g.slug, id:g.id, token };
   view = "join";
   $("#title").textContent = "邀請加入";
   $("#backBtn").classList.add("hidden"); $("#brandIcon").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
@@ -1143,7 +1156,7 @@ function showJoinPrompt(g, token){
 async function acceptJoin(){
   if(!_invite) return;
   $("#main").innerHTML = loadingHTML("加入中…");
-  try{ current = await Store.join(_invite.id, _invite.token); }
+  try{ current = _invite.slug ? await Store.joinBySlug(_invite.slug) : await Store.join(_invite.id, _invite.token); }
   catch(e){ console.error(e); toast("加入失敗"); return renderList(); }
   history.replaceState(null, "", location.pathname);   // 清掉 hash 邀請參數
   _invite = null;
@@ -1175,11 +1188,12 @@ async function boot(){
   const hp = new URLSearchParams((location.hash||"").replace(/^#/,""));
   const gid = qp.get("g") || hp.get("g");
   const tok = qp.get("t") || hp.get("t");
-  if(gid && tok){
+  if(gid){
     $("#title").textContent = "載入中…";
     $("#main").innerHTML = loadingHTML("載入聚會中…");
     try{
-      const g = await Store.get(gid, tok);
+      // 有 t → 舊式 id+token 連結；沒 t → 新式短連結（g 即 slug）
+      const g = tok ? await Store.get(gid, tok) : await Store.getBySlug(gid);
       if(g){
         if((g.members||[]).some(m=>m.uid===MY_UID)){ current=g; if(applyProfileToCurrent()) persistCurrent(); subscribeRealtime(g.id); renderEdit(false); return; }
         showJoinPrompt(g, tok); return;
