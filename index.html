@@ -149,8 +149,19 @@ function itemsTotal(items){
 function paymentsTotal(payments, total){
   return effectivePayments(payments, total).reduce((s,p)=>s+p.amount, 0);
 }
+// 整單調整層：服務費/折扣，按消費比例分攤。sign +1 加價 / -1 折扣
+function adjustTotal(subtotal, adjustments){
+  return (adjustments || []).reduce((s,a)=>{
+    const amt = a.kind==='pct' ? subtotal*(Number(a.value)||0)/100 : (Number(a.value)||0);
+    return s + amt*(a.sign||1);
+  }, 0);
+}
+function grandTotal(items, adjustments){
+  const sub = itemsTotal(items);
+  return sub + adjustTotal(sub, adjustments);
+}
 
-function computeSplit(members, items, payments){
+function computeSplit(members, items, payments, adjustments){
   const ids = members.map(m => m.id);
   const nameOf = Object.fromEntries(members.map(m => [m.id, m.name]));
 
@@ -168,7 +179,16 @@ function computeSplit(members, items, payments){
     for(const s of sharers) owe[s] += per;
   }
 
-  // 付款層（與分攤層脫鉤）：誰先出錢
+  // 整單調整層：服務費/折扣按每人消費比例分攤
+  const subtotal = total;
+  const adjustment = adjustTotal(subtotal, adjustments);
+  total = subtotal + adjustment;
+  if(subtotal > 0 && adjustment !== 0){
+    const scale = total / subtotal;
+    for(const id of ids) owe[id] *= scale;
+  }
+
+  // 付款層（與分攤層脫鉤）：誰先出錢（金額對應調整後總額）
   for(const p of effectivePayments(payments, total)){
     if(p.payerId in paid) paid[p.payerId] += p.amount;
   }
@@ -219,7 +239,7 @@ function computeSplit(members, items, payments){
   checks.push({ok: transfers.length <= Math.max(0, ids.length-1), label:`轉帳筆數 ≤ 人數−1`});
   const allOk = checks.every(c=>c.ok);
 
-  return {members, nameOf, total, owe, paid, net, netR, transfers, checks, allOk};
+  return {members, nameOf, total, subtotal, adjustment, adjustments: adjustments||[], owe, paid, net, netR, transfers, checks, allOk};
 }
 
 /* =========================================================================
@@ -240,6 +260,7 @@ const Store = {
       (g.items||[]).forEach(it=>{ if(it.payerId){ sums[it.payerId] = (sums[it.payerId]||0) + (Number(it.amount)||0); } });
       for(const pid in sums) g.payments.push({id:uid(), payerId:pid, amount:sums[pid]});
     }
+    if(!Array.isArray(g.adjustments)) g.adjustments = [];
     (g.items||[]).forEach(it=>{ delete it.payerId; });
     return g;
   },
@@ -268,6 +289,7 @@ let view = "list";          // list | edit | result
 let current = null;         // 編輯中的聚會
 let editDraftItem = null;   // 正在新增/編輯的項目
 let editDraftPayment = null; // 正在新增/編輯的付款
+let editDraftAdj = null;     // 正在新增/編輯的服務費/折扣
 
 function toast(msg){
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
@@ -311,7 +333,7 @@ function renderList(){
 }
 
 function newGathering(){
-  current = { id:uid(), title:"", date:todayStr(), members:[], items:[], payments:[] };
+  current = { id:uid(), title:"", date:todayStr(), members:[], items:[], payments:[], adjustments:[] };
   renderEdit(true);
 }
 function openGathering(id){
@@ -331,7 +353,9 @@ function renderEdit(isNew){
 
   const m = current.members, items = current.items;
   const pays = current.payments || (current.payments = []);
-  const tot = itemsTotal(items);
+  const adjs = current.adjustments || (current.adjustments = []);
+  const sub = itemsTotal(items);
+  const tot = grandTotal(items, adjs);
   const hasFull = pays.some(p=>p.isFull);
   const payTot = paymentsTotal(pays, tot);
   const matched = hasFull ? tot>0 : Math.abs(tot - payTot) < 0.5;
@@ -372,6 +396,21 @@ function renderEdit(isNew){
       <button class="btn ghost block" onclick="startAddItem()" ${m.length===0?'disabled style="opacity:.45"':''}>
         ＋ 新增項目${m.length===0?'（先加成員）':''}
       </button>
+    </div>
+
+    <div class="card">
+      <div class="sect-title">服務費 / 折扣（${adjs.length}）</div>
+      <div class="hint">整單加減，按每人消費比例分攤。例：餐廳 10% 服務費。</div>
+      <div id="adjList">
+        ${adjs.length===0 ? '<div class="faint" style="padding:6px 2px;">沒有額外加減。</div>' :
+          adjs.map(a=>adjRowHTML(a, sub)).join("")}
+      </div>
+      <div class="spacer"></div>
+      <div class="row">
+        <button class="btn ghost" onclick="quickServiceCharge()" ${items.length===0?'disabled style="opacity:.45"':''}>服務費 10%</button>
+        <button class="btn ghost" onclick="startAddAdj()" ${items.length===0?'disabled style="opacity:.45"':''}>＋ 加價 / 折扣</button>
+      </div>
+      ${adjs.length>0 ? `<div class="recon" style="margin-top:12px;color:var(--muted);background:var(--panel2);">小計 ${money(sub)}　→　調整後總額 ${money(tot)}</div>` : ''}
     </div>
 
     <div class="card">
@@ -595,7 +634,80 @@ function deletePayment(){
   persistCurrent();
   renderEdit(false);
 }
-function cancelDraft(){ editDraftItem=null; editDraftPayment=null; renderEdit(false); }
+function cancelDraft(){ editDraftItem=null; editDraftPayment=null; editDraftAdj=null; renderEdit(false); }
+
+/* ---- 整單調整層：服務費 / 折扣 ---- */
+function adjRowHTML(a, sub){
+  const amt = a.kind==='pct' ? sub*(Number(a.value)||0)/100 : (Number(a.value)||0);
+  const signed = (a.sign||1) * amt;
+  const desc = a.kind==='pct' ? `${a.sign<0?'−':'+'}${a.value}%` : `${a.sign<0?'−':'+'}${money(Math.abs(a.value))}`;
+  return `<div class="itemrow" onclick="startEditAdj('${a.id}')">
+    <div class="info"><div class="nm">${esc(a.name||'調整')}</div><div class="sub">${desc}</div></div>
+    <div class="price num" style="color:${a.sign<0?'var(--get)':'var(--ink)'}">${signed<0?'−':'+'}${money(Math.abs(signed))}</div>
+    <div class="faint">›</div>
+  </div>`;
+}
+function quickServiceCharge(){
+  current.adjustments = current.adjustments || [];
+  if(current.adjustments.some(a=>a.name==='服務費')){ toast('已經有服務費了'); return; }
+  current.adjustments.push({id:uid(), name:'服務費', kind:'pct', value:10, sign:1});
+  persistCurrent(); renderEdit(false);
+}
+function startAddAdj(){ editDraftAdj = {id:uid(), name:'', kind:'pct', value:'', sign:1, _isNew:true}; renderAdjForm(); }
+function startEditAdj(id){
+  const a = (current.adjustments||[]).find(x=>x.id===id);
+  if(!a) return;
+  editDraftAdj = JSON.parse(JSON.stringify(a));
+  renderAdjForm();
+}
+function setAdjSign(s){ editDraftAdj.sign=s; renderAdjForm(); }
+function setAdjKind(k){ editDraftAdj.kind=k; renderAdjForm(); }
+function renderAdjForm(){
+  const d = editDraftAdj;
+  $("#main").innerHTML = `
+    <div class="card">
+      <div class="sect-title">${d._isNew?'新增加價 / 折扣':'編輯'}</div>
+      <label class="fld"><span>名稱</span>
+        <input id="adjName" placeholder="例如：服務費、折價券" value="${esc(d.name)}"></label>
+      <div class="sect-title" style="margin-top:4px;">加還是減</div>
+      <div class="chips">
+        <span class="chip ${d.sign>=0?'on':''}" onclick="setAdjSign(1)">＋ 加價</span>
+        <span class="chip ${d.sign<0?'on':''}" onclick="setAdjSign(-1)">− 折扣</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="sect-title">百分比還是固定金額</div>
+      <div class="chips">
+        <span class="chip ${d.kind==='pct'?'on':''}" onclick="setAdjKind('pct')">百分比 %</span>
+        <span class="chip ${d.kind==='amount'?'on':''}" onclick="setAdjKind('amount')">固定金額</span>
+      </div>
+      <div class="spacer"></div>
+      <label class="fld" style="margin-bottom:0;"><span>${d.kind==='pct'?'百分比（%）':'金額'}</span>
+        <input id="adjVal" type="number" inputmode="decimal" placeholder="${d.kind==='pct'?'10':'200'}" value="${esc(d.value)}"></label>
+    </div>
+    <div class="row">
+      <button class="btn ghost" onclick="cancelDraft()">取消</button>
+      <button class="btn" onclick="saveAdj()">儲存</button>
+    </div>
+    ${d._isNew?'':'<div class="spacer"></div><button class="btn danger block" onclick="deleteAdj()">刪除</button>'}
+  `;
+  const n=$("#adjName"); if(n) n.oninput=()=>editDraftAdj.name=n.value;
+  const v=$("#adjVal"); if(v) v.oninput=()=>editDraftAdj.value=v.value;
+}
+function saveAdj(){
+  const d = editDraftAdj;
+  d.name = ($("#adjName").value||'').trim() || (d.sign<0?'折扣':'加價');
+  d.value = Number($("#adjVal").value)||0;
+  if(d.value<=0){ toast('數值要大於 0'); return; }
+  const a = {id:d.id, name:d.name, kind:d.kind, value:d.value, sign:d.sign};
+  current.adjustments = current.adjustments || [];
+  const i = current.adjustments.findIndex(x=>x.id===d.id);
+  if(i>=0) current.adjustments[i]=a; else current.adjustments.push(a);
+  editDraftAdj=null; persistCurrent(); renderEdit(false);
+}
+function deleteAdj(){
+  current.adjustments = (current.adjustments||[]).filter(x=>x.id!==editDraftAdj.id);
+  editDraftAdj=null; persistCurrent(); renderEdit(false);
+}
 
 /* =========================================================================
  * 畫面：分帳結果
@@ -603,7 +715,7 @@ function cancelDraft(){ editDraftItem=null; editDraftPayment=null; renderEdit(fa
 let lastResult = null;
 function goResult(){
   persistCurrent();
-  const tot = itemsTotal(current.items);
+  const tot = grandTotal(current.items, current.adjustments);
   const pays = current.payments || [];
   if(pays.length===0){ toast("先設定誰先付的錢"); return; }
   if(!pays.some(p=>p.isFull) && Math.abs(tot - paymentsTotal(pays, tot)) >= 0.5){
@@ -617,7 +729,7 @@ function renderResult(){
   $("#backBtn").classList.remove("hidden");
   $("#addGatheringBtn").classList.add("hidden");
 
-  const r = computeSplit(current.members, current.items, current.payments);
+  const r = computeSplit(current.members, current.items, current.payments, current.adjustments);
   lastResult = r;
   const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
 
@@ -655,6 +767,13 @@ function renderResult(){
         <div class="rc-total">總額<b class="num">${money(r.total)}</b></div>
       </div>
 
+      ${r.adjustment ? `<div class="rc-block">
+        <div class="h">帳單</div>
+        <div class="person"><span class="nm">小計</span><span class="net num">${money(r.subtotal)}</span></div>
+        ${r.adjustments.map(a=>{ const amt=a.kind==='pct'?r.subtotal*(Number(a.value)||0)/100:(Number(a.value)||0); const signed=(a.sign||1)*amt; return `<div class="person"><span class="nm muted">${esc(a.name)}${a.kind==='pct'?` (${a.value}%)`:''}</span><span class="net num ${a.sign<0?'pos':''}">${signed<0?'−':'+'}${money(Math.abs(signed))}</span></div>`; }).join("")}
+        <div class="person"><span class="nm">總額</span><span class="net num">${money(r.total)}</span></div>
+      </div>` : ''}
+
       <div class="rc-block">
         <div class="h">每人</div>
         ${peopleRows}
@@ -681,7 +800,12 @@ function resultText(){
   const r = lastResult;
   const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
   let s = `🧾 ${current.title||"AA 分帳"}（${current.date||""}）\n`;
-  s += `總額 ${money(r.total)}・${current.members.length} 人\n\n`;
+  if(r.adjustment){
+    let bits = r.adjustments.map(a=>`${a.sign<0?'−':'+'}${a.kind==='pct'?a.value+'%':money(a.value)} ${a.name}`).join("、");
+    s += `小計 ${money(r.subtotal)}（${bits}）→ 總額 ${money(r.total)}・${current.members.length} 人\n\n`;
+  } else {
+    s += `總額 ${money(r.total)}・${current.members.length} 人\n\n`;
+  }
   s += `〔每人〕\n`;
   for(const p of ordered){
     const net=r.netR[p.id];
@@ -725,7 +849,7 @@ function shareToLine(){
  * ========================================================================= */
 $("#backBtn").addEventListener("click", ()=>{
   if(view==="result") renderEdit(false);
-  else if(view==="edit"){ if(editDraftItem||editDraftPayment){ editDraftItem=null; editDraftPayment=null; renderEdit(false); } else renderList(); }
+  else if(view==="edit"){ if(editDraftItem||editDraftPayment||editDraftAdj){ editDraftItem=null; editDraftPayment=null; editDraftAdj=null; renderEdit(false); } else renderList(); }
   else renderList();
 });
 $("#addGatheringBtn").addEventListener("click", newGathering);
