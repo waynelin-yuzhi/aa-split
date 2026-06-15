@@ -128,6 +128,25 @@
   .spinner{width:34px; height:34px; border-radius:50%; border:3px solid var(--line);
     border-top-color:var(--accent); animation:spin .8s linear infinite; margin:0 auto 14px;}
   @keyframes spin{to{transform:rotate(360deg);}}
+  /* 編輯頁：摘要卡 + 快捷列 + 浮動＋ */
+  .gsum .gtitle{width:100%; background:transparent; border:0; color:var(--ink); font-size:21px; font-weight:750; padding:2px 0; outline:none;}
+  .gsum .gsum-row{display:flex; align-items:center; gap:12px; margin-top:8px;}
+  .gsum .gsum-row input[type=date]{flex:0 0 auto; width:auto; background:var(--panel2); border:1px solid var(--line);
+    color:var(--muted); border-radius:10px; padding:6px 11px; font-size:13px;}
+  .gsum-meta{color:var(--muted); font-size:13.5px;}
+  .gsum-meta b{color:var(--ink);}
+  .quickbar{display:flex; gap:10px; overflow-x:auto; padding:0 0 14px;}
+  .qbtn{flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:5px; background:var(--panel);
+    border:1px solid var(--line); color:var(--ink); border-radius:16px; padding:12px 18px; font-size:12.5px;
+    font-weight:600; cursor:pointer; min-width:66px;}
+  .qbtn .qi{font-size:20px; line-height:1;}
+  .qbtn.dim{opacity:.4;}
+  .qbtn:active{transform:translateY(1px);}
+  .fab{position:fixed; right:18px; bottom:24px; width:60px; height:60px; border-radius:50%; background:var(--accent);
+    color:#0c1410; font-size:32px; line-height:1; border:0; box-shadow:0 10px 28px rgba(0,0,0,.5); cursor:pointer;
+    z-index:40; display:flex; align-items:center; justify-content:center;}
+  .fab:active{transform:scale(.95);}
+  .led-amt{color:var(--accent); font-weight:700;}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -455,15 +474,18 @@ function renderEdit(isNew){
   const canCompute = items.length>0 && tot>0;
   const meId = getMe();
   $("#main").innerHTML = `
-    <div class="card">
-      <label class="fld">
-        <span>聚會名稱</span>
-        <input id="gTitle" placeholder="例如：六月團聚 / 信義區燒肉" value="${esc(current.title)}">
-      </label>
-      <label class="fld" style="margin-bottom:0;">
-        <span>日期</span>
+    <div class="card gsum">
+      <input id="gTitle" class="gtitle" placeholder="聚會名稱（例：六月團聚）" value="${esc(current.title)}">
+      <div class="gsum-row">
         <input id="gDate" type="date" value="${esc(current.date)}">
-      </label>
+        <span class="gsum-meta">${m.length} 人 ・ 總額 <b class="num">${money(tot)}</b></span>
+      </div>
+    </div>
+
+    <div class="quickbar">
+      ${CLOUD && current.shareToken ? `<button class="qbtn" onclick="shareInvite()"><span class="qi">🔗</span>邀請</button>` : ''}
+      <button class="qbtn ${canCompute?'':'dim'}" onclick="goResult()"><span class="qi">🧮</span>算分帳</button>
+      <button class="qbtn" onclick="quickServiceCharge()" ${items.length===0?'disabled style="opacity:.4"':''}><span class="qi">％</span>服務費</button>
     </div>
 
     <div class="card">
@@ -487,42 +509,28 @@ function renderEdit(isNew){
         <input id="myPayInfo" placeholder="例：國泰 700-1234567 / LINE Pay 連結" value="${esc((current.members.find(x=>x.id===meId)||{}).payInfo||'')}"></label>` : ''}` : ''}
     </div>
 
-    ${CLOUD && current.shareToken ? `<button class="btn ghost block" style="margin-bottom:14px;" onclick="shareInvite()">🔗 邀請朋友一起記（傳連結）</button>` : ''}
-
     <div class="card">
-      <div class="sect-title">消費項目（${items.length}）</div>
-      <div class="hint">每筆填「品名、金額、誰付的、誰分攤」。單點就只勾一個人。</div>
+      <div class="sect-title">帳目（${items.length} 筆）</div>
       <div id="itemList">
-        ${items.length===0 ? '<div class="faint" style="padding:6px 2px;">還沒有項目。</div>' :
+        ${items.length===0 ? '<div class="faint" style="padding:8px 2px;">還沒有帳目——點右下角的 ＋ 新增一筆</div>' :
           items.map(it=>itemRowHTML(it)).join("")}
       </div>
+      ${adjs.length ? `<hr class="sep">${adjs.map(a=>adjRowHTML(a, sub)).join("")}` : ''}
+      ${adjs.length>0 ? `<div class="recon" style="margin-top:10px;color:var(--muted);background:var(--panel2);">小計 ${money(sub)}　→　總額 ${money(tot)}</div>` : ''}
       <div class="spacer"></div>
-      <button class="btn ghost block" onclick="startAddItem()" ${m.length===0?'disabled style="opacity:.45"':''}>
-        ＋ 新增項目${m.length===0?'（先加成員）':''}
-      </button>
+      <button class="btn ghost block" onclick="startAddAdj()" ${items.length===0?'disabled style="opacity:.45"':''}>＋ 服務費 / 折扣</button>
     </div>
 
-    <div class="card">
-      <div class="sect-title">服務費 / 折扣（${adjs.length}）</div>
-      <div class="hint">整單加減，按每人消費比例分攤。例：餐廳 10% 服務費。</div>
-      <div id="adjList">
-        ${adjs.length===0 ? '<div class="faint" style="padding:6px 2px;">沒有額外加減。</div>' :
-          adjs.map(a=>adjRowHTML(a, sub)).join("")}
-      </div>
-      <div class="spacer"></div>
-      <div class="row">
-        <button class="btn ghost" onclick="quickServiceCharge()" ${items.length===0?'disabled style="opacity:.45"':''}>服務費 10%</button>
-        <button class="btn ghost" onclick="startAddAdj()" ${items.length===0?'disabled style="opacity:.45"':''}>＋ 加價 / 折扣</button>
-      </div>
-      ${adjs.length>0 ? `<div class="recon" style="margin-top:12px;color:var(--muted);background:var(--panel2);">小計 ${money(sub)}　→　調整後總額 ${money(tot)}</div>` : ''}
+    <button class="btn block" onclick="goResult()" ${canCompute?'':'disabled style="opacity:.45"'}>🧮 算分帳 →</button>
+    <div class="spacer"></div>
+    <div class="row">
+      <button class="btn ghost" onclick="finishEdit()">✓ 完成</button>
+      <button class="btn danger" onclick="deleteGathering()">刪除</button>
     </div>
-
-    <button class="btn block" onclick="goResult()" ${canCompute?'':'disabled style="opacity:.45"'}>算分帳 →</button>
-    <div class="spacer"></div>
-    <button class="btn ghost block" onclick="finishEdit()">✓ 完成，回我的聚會</button>
-    <div class="spacer"></div>
-    <button class="btn danger block" onclick="deleteGathering()">刪除這場聚會</button>
     <div class="faint" style="text-align:center;margin-top:10px;">編輯內容會自動儲存到雲端</div>
+    <div style="height:84px;"></div>
+
+    <button class="fab" onclick="fabAdd()" aria-label="新增帳目">＋</button>
   `;
 
   const mi = $("#memberInput");
@@ -535,6 +543,7 @@ function renderEdit(isNew){
 let _persistTimer = null;
 function debouncedPersist(){ clearTimeout(_persistTimer); _persistTimer = setTimeout(()=>persistCurrent(), 500); }
 async function finishEdit(){ await persistCurrent(); toast("已儲存"); renderList(); }
+function fabAdd(){ if(!current.members.length){ toast("先在上面「成員」加人"); return; } startAddItem(); }
 
 function itemRowHTML(it){
   const sn = (it.sharerIds||[]).length;
@@ -608,7 +617,7 @@ function shareInvite(){
   // 用 LIFF 網址 + query，讓對方在 LINE 內開啟並登入；hash 在登入轉址會掉
   const link = `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}`;
   const name = current.title || "未命名聚會";
-  const txt = `欸，算一下！— 分帳一鍵算清\n「${name}」邀你一起分帳，點開就能加入 👉\n${link}`;
+  const txt = `欸，算一下！— 簡單好用的小工具\n邀你一起算一下，點開就能加入「${name}」 👉\n${link}`;
   if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
     liff.shareTargetPicker([{type:"text", text:txt}]).then(()=>toast("已開啟分享")).catch(()=>toast("分享取消"));
   } else if(navigator.share){
