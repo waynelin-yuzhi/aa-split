@@ -151,6 +151,21 @@
     z-index:40; display:flex; align-items:center; justify-content:center;}
   .fab:active{transform:scale(.95);}
   .led-amt{color:var(--accent); font-weight:700;}
+  /* 頭像 + 個人設定 modal + 置中浮動鈕 */
+  .avatar-btn{flex:0 0 auto; width:34px; height:34px; border-radius:50%; cursor:pointer; border:1px solid var(--line);
+    background:var(--panel2) center/cover no-repeat; display:flex; align-items:center; justify-content:center;
+    color:var(--ink); font-weight:700; font-size:15px;}
+  .modal{position:fixed; inset:0; background:rgba(0,0,0,.62); z-index:70; display:flex; align-items:center; justify-content:center; padding:20px;}
+  .modal.hidden{display:none;}
+  .modal-card{background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:20px; width:100%; max-width:420px;}
+  .modal-head{display:flex; align-items:center; gap:12px; margin-bottom:16px;}
+  .avatar-lg{width:48px; height:48px; border-radius:50%; flex:0 0 auto; background:var(--panel2) center/cover no-repeat;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px;}
+  .pm-name{font-size:17px; font-weight:700;}
+  .fab-center{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--accent); color:#0c1410;
+    font-weight:700; font-size:16px; border:0; border-radius:999px; padding:14px 30px; cursor:pointer; z-index:40;
+    box-shadow:0 10px 28px rgba(0,0,0,.45);}
+  .fab-center:active{transform:translateX(-50%) translateY(1px);}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -163,12 +178,27 @@
     <button id="backBtn" class="iconbtn hidden" aria-label="返回">‹</button>
     <img id="brandIcon" class="brand-icon" src="logo_icon.svg" alt="">
     <h1 id="title">欸，算一下！</h1>
-    <button id="addGatheringBtn" class="btn sm">＋ 新聚會</button>
+    <button id="addGatheringBtn" class="btn sm hidden">＋ 新聚會</button>
+    <div id="avatarBtn" class="avatar-btn hidden" onclick="openProfile()" title="個人設定"></div>
   </header>
   <main id="main"></main>
 </div>
 <div id="toast" class="toast"></div>
 <div id="syncbar" class="syncbar" onclick="applySync()">🔄 有人更新了，點此同步</div>
+<div id="profileModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="avatar-lg" id="pmAvatar"></div>
+      <div><div class="pm-name" id="pmName"></div><div class="faint">個人設定</div></div>
+    </div>
+    <label class="fld"><span>我的收款資訊（給人轉帳用，選填）</span>
+      <input id="pmPay" placeholder="例：國泰 700-1234567 / LINE Pay 連結"></label>
+    <div class="faint" style="margin:-2px 2px 14px;">設定後，你建立或加入的聚會會自動帶上，結算時別人看得到、可一鍵複製。</div>
+    <button class="btn block" onclick="saveProfile()">儲存</button>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="closeProfile()">關閉</button>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -381,7 +411,46 @@ const money = n => "$" + Math.round(n).toLocaleString("en-US");
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
 let liffReady = false, inLineClient = false;
-let ACCESS_TOKEN = null, MY_UID = null, MY_NAME = null;   // 身分（LINE 登入後填）
+let ACCESS_TOKEN = null, MY_UID = null, MY_NAME = null, MY_PIC = null;   // 身分（LINE 登入後填）
+// 個人資料（本機，依 LINE uid）：預設收款資訊，會套到我在各聚會的成員身分
+function myProfile(){ try{ return JSON.parse(localStorage.getItem("aa_profile_"+MY_UID)) || {}; }catch(e){ return {}; } }
+function saveMyProfile(p){ if(MY_UID) localStorage.setItem("aa_profile_"+MY_UID, JSON.stringify(p)); }
+// 把我的預設收款資訊套到目前聚會裡「我」這個成員（若我還沒填）
+function applyProfileToCurrent(){
+  if(!current || !MY_UID) return false;
+  const me = (current.members||[]).find(x=>x.uid===MY_UID);
+  const pf = myProfile();
+  if(me && pf.payInfo && !me.payInfo){ me.payInfo = pf.payInfo; return true; }
+  return false;
+}
+function renderAvatar(){
+  const a = $("#avatarBtn"); if(!a) return;
+  if(!MY_UID){ a.classList.add("hidden"); return; }
+  a.classList.remove("hidden");
+  if(MY_PIC){ a.style.backgroundImage = `url("${MY_PIC}")`; a.textContent = ""; }
+  else { a.style.backgroundImage = "none"; a.textContent = (MY_NAME||"我").slice(0,1); }
+}
+function openProfile(){
+  const pf = myProfile();
+  $("#pmName").textContent = MY_NAME || "我";
+  const av = $("#pmAvatar");
+  if(MY_PIC){ av.style.backgroundImage = `url("${MY_PIC}")`; av.textContent=""; } else { av.textContent = (MY_NAME||"我").slice(0,1); }
+  $("#pmPay").value = pf.payInfo || "";
+  $("#profileModal").classList.remove("hidden");
+}
+function closeProfile(){ $("#profileModal").classList.add("hidden"); }
+function saveProfile(){
+  const pf = myProfile();
+  pf.payInfo = $("#pmPay").value.trim();
+  saveMyProfile(pf);
+  // 套到目前聚會「我」的成員（覆寫成最新值）並存雲端
+  if(current && MY_UID){
+    const me = (current.members||[]).find(x=>x.uid===MY_UID);
+    if(me){ me.payInfo = pf.payInfo; persistCurrent(); if(view==="edit") renderEdit(false); }
+  }
+  closeProfile();
+  toast("已儲存個人設定");
+}
 let view = "list";          // list | edit | result
 let current = null;         // 編輯中的聚會
 let editDraftItem = null;   // 正在新增/編輯的項目
@@ -414,7 +483,7 @@ async function renderList(){
   $("#title").textContent = "欸，算一下！";
   $("#backBtn").classList.add("hidden");
   $("#brandIcon").classList.remove("hidden");
-  $("#addGatheringBtn").classList.remove("hidden");
+  $("#addGatheringBtn").classList.add("hidden");
   $("#main").innerHTML = loadingHTML();
 
   let gs;
@@ -440,7 +509,8 @@ async function renderList(){
       </div>
       <div class="amt num">${money(g.total||0)}</div>
       <div class="faint">›</div>
-    </div>`).join("");
+    </div>`).join("")
+    + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()">＋ 新聚會</button>`;
 }
 
 async function newGathering(){
@@ -449,6 +519,7 @@ async function newGathering(){
   try{ created = await Store.create(g); }
   catch(e){ console.error(e); toast("建立失敗，檢查網路"); return; }
   current = created;
+  if(applyProfileToCurrent()) persistCurrent();
   subscribeRealtime(current.id);
   renderEdit(true);
 }
@@ -457,6 +528,7 @@ async function openGathering(id){
   try{ current = await Store.get(id, null); }
   catch(e){ console.error(e); current = null; }
   if(!current){ toast("讀取失敗"); return renderList(); }
+  if(applyProfileToCurrent()) persistCurrent();
   subscribeRealtime(current.id);
   renderEdit(false);
 }
@@ -507,10 +579,7 @@ function renderEdit(isNew){
       <div class="sect-title" style="margin:0 0 8px;">我是誰？ <span class="faint" style="font-weight:400;">記住後，新項目自動帶我當付款人</span></div>
       <div class="chips">
         ${m.map(p=>`<span class="chip ${p.id===meId?'on':''}" onclick="setMeAndRerender('${p.id}')">${esc(p.name)}</span>`).join("")}
-      </div>
-      ${meId ? `<div class="spacer"></div>
-      <label class="fld" style="margin-bottom:0;"><span>我的收款資訊（給人轉帳用，選填）</span>
-        <input id="myPayInfo" placeholder="例：國泰 700-1234567 / LINE Pay 連結" value="${esc((current.members.find(x=>x.id===meId)||{}).payInfo||'')}"></label>` : ''}` : ''}
+      </div>` : ''}
     </div>
 
     <div class="card">
@@ -542,7 +611,6 @@ function renderEdit(isNew){
   // 標題/日期即時自動儲存（避免只命名沒加項目就離開、名稱沒存到）
   const gt = $("#gTitle"); if(gt) gt.addEventListener("input", debouncedPersist);
   const gd = $("#gDate");  if(gd) gd.addEventListener("change", ()=>persistCurrent());
-  const pi = $("#myPayInfo"); if(pi) pi.addEventListener("input", ()=>{ const me=current.members.find(x=>x.id===getMe()); if(me){ me.payInfo = pi.value; debouncedPersist(); } });
 }
 let _persistTimer = null;
 function debouncedPersist(){ clearTimeout(_persistTimer); _persistTimer = setTimeout(()=>persistCurrent(), 500); }
@@ -1080,6 +1148,7 @@ async function acceptJoin(){
   catch(e){ console.error(e); toast("加入失敗"); return renderList(); }
   history.replaceState(null, "", location.pathname);   // 清掉 hash 邀請參數
   _invite = null;
+  if(applyProfileToCurrent()) persistCurrent();
   subscribeRealtime(current.id);
   renderEdit(false);
 }
@@ -1097,8 +1166,9 @@ async function boot(){
     if(!liff.isLoggedIn()){ liff.login(); return; }   // LINE 內若未登入，導向登入後返回
     liffReady = true;
     const prof = await liff.getProfile();
-    MY_UID = prof.userId; MY_NAME = prof.displayName || "我";
+    MY_UID = prof.userId; MY_NAME = prof.displayName || "我"; MY_PIC = prof.pictureUrl || "";
     ACCESS_TOKEN = liff.getAccessToken();
+    renderAvatar();
   }catch(e){ console.error("LIFF login failed:", e); showLoginError("LINE 登入失敗，請重開或在 LINE 內開啟"); return; }
   if(!ACCESS_TOKEN){ showLoginError("拿不到 LINE 登入資訊，請在 LINE 內開啟"); return; }
 
@@ -1112,7 +1182,7 @@ async function boot(){
     try{
       const g = await Store.get(gid, tok);
       if(g){
-        if((g.members||[]).some(m=>m.uid===MY_UID)){ current=g; subscribeRealtime(g.id); renderEdit(false); return; }
+        if((g.members||[]).some(m=>m.uid===MY_UID)){ current=g; if(applyProfileToCurrent()) persistCurrent(); subscribeRealtime(g.id); renderEdit(false); return; }
         showJoinPrompt(g, tok); return;
       }
     }catch(e){ console.error(e); }
