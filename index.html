@@ -112,6 +112,12 @@
   .itemrow .info .nm{font-weight:600;}
   .itemrow .info .sub{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .itemrow .price{font-weight:700; color:#f0726a;}
+  .itemrow .caticon{flex:0 0 auto; width:30px; height:30px; display:flex; align-items:center; justify-content:center;}
+  .itemrow .caticon svg{width:25px; height:25px;}
+  .catpick{gap:7px;}
+  .catchip{padding:7px 11px;}
+  .catchip .cati{display:inline-flex; vertical-align:-4px; margin-right:5px;}
+  .catchip .cati svg{width:18px; height:18px;}
   /* result card */
   #resultCard{background:linear-gradient(165deg,#13161d,#0e1014); border:1px solid #262b36;
     border-radius:20px; padding:20px; }
@@ -555,6 +561,39 @@ const ICONS = {
   percent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="6.5" y1="17.5" x2="17.5" y2="6.5"/><circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="16" r="2.2"/></svg>`
 };
 
+// 品項分類：各類別一個專屬顏色 + 單色線條圖示；打品名自動猜、可手動改
+const CATS = [
+  { k:'food', label:'餐飲', color:'#f0934a',
+    icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h16"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M9 4c-.6 1 .6 2 0 3.2"/><path d="M13 4c-.6 1 .6 2 0 3.2"/></svg>`,
+    kw:['餐','飯','食','鍋','烤','肉','麵','壽司','早餐','午餐','晚餐','宵夜','buffet','餐廳','小吃','火鍋','燒','便當','pizza','披薩','漢堡','brunch','料理','拉麵','牛排','早午餐','滷','炸','粥','沙拉','甜點','蛋糕'] },
+  { k:'transport', label:'交通', color:'#5b9cf0',
+    icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v-3l2-5h12l2 5v3"/><path d="M3 17h18"/><circle cx="7.5" cy="17" r="1.6"/><circle cx="16.5" cy="17" r="1.6"/></svg>`,
+    kw:['車','計程','taxi','uber','油','捷運','高鐵','火車','機票','車票','交通','停車','租車','公車','客運','船','機車','加油','ubike','youbike','過路','票價','航班','飛機','船票','纜車','租機車'] },
+  { k:'lodging', label:'住宿', color:'#b07ee6',
+    icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19v-7h12a5 5 0 0 1 5 5v2"/><path d="M3 12V8"/><path d="M7 12v-1.5h4V12"/></svg>`,
+    kw:['住','飯店','旅館','民宿','hotel','airbnb','住宿','房','villa','青旅','訂房','旅店','背包','hostel'] },
+  { k:'drinks', label:'飲料', color:'#4fc8c8',
+    icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10l-1 11.5a1.6 1.6 0 0 1-1.6 1.5H9.6A1.6 1.6 0 0 1 8 19.5L7 8z"/><path d="M14.6 3.5 12.2 8"/></svg>`,
+    kw:['酒','啤酒','飲','咖啡','手搖','茶','可樂','飲料','奶茶','星巴克','cafe','bar','調酒','汽水','果汁','拿鐵','珍奶','清酒','紅酒','威士忌','水'] },
+  { k:'shopping', label:'購物', color:'#e67ba8',
+    icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12l-1 12.5H7L6 8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg>`,
+    kw:['買','購','超市','全聯','costco','超商','便利商店','伴手','名產','衣','藥妝','購物','商店','7-11','全家','禮','紀念品','日用','零食','超商'] },
+  { k:'fun', label:'娛樂', color:'#e0b85a',
+    icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V8h16v1a2 2 0 0 0 0 6v1H4v-1a2 2 0 0 0 0-6z"/><path d="M14 8.5v7" stroke-dasharray="1.5 2.2"/></svg>`,
+    kw:['票','門票','電影','遊樂','樂園','展','演唱會','ktv','遊戲','娛樂','按摩','spa','溫泉','景點','包廂','唱歌','夜衝','酒吧','夜店','密室','保齡','撞球'] },
+  { k:'other', label:'其他', color:'#9aa1ad',
+    icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="6" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="18" cy="12" r="1.5" fill="currentColor"/></svg>`,
+    kw:[] }
+];
+const catOf = k => CATS.find(c=>c.k===k) || CATS[CATS.length-1];
+// 猜測順序：餐飲關鍵字較廣（飯/食/肉…易誤中飯店），故放最後，讓較專一的類別先比中
+const GUESS_ORDER = ['transport','lodging','drinks','fun','shopping','food'];
+function guessCat(name){
+  const s = String(name||'').toLowerCase();
+  for(const k of GUESS_ORDER){ const c=catOf(k); if(c.kw.some(w=>s.includes(w.toLowerCase()))) return k; }
+  return 'other';
+}
+
 let liffReady = false, inLineClient = false;
 let ACCESS_TOKEN = null, MY_UID = null, MY_NAME = null, MY_PIC = null;   // 身分（LINE 登入後填）
 // 個人資料（本機，依 LINE uid）：預設收款資訊，會套到我在各聚會的成員身分
@@ -816,7 +855,9 @@ function itemRowHTML(it){
   else who = `${sn} 人分`;
   const payer = current.members.find(x=>x.id===it.payerId);
   const modeTag = (it.split && it.split.mode==='shares') ? ' ・按份數' : (it.split && it.split.mode==='amount') ? ' ・指定金額' : '';
+  const cat = catOf(it.cat || guessCat(it.name));
   return `<div class="itemrow" onclick="startEditItem('${it.id}')">
+    <div class="caticon" style="color:${cat.color}" title="${cat.label}">${cat.icon}</div>
     <div class="info">
       <div class="nm">${esc(it.name||"未命名")}</div>
       <div class="sub">${it.at?`<span style="color:var(--muted)">${esc(fmtAt(it.at))}</span> ・ `:''}<b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 先付 ・ ${esc(who)}${modeTag}</div>
@@ -993,6 +1034,17 @@ function calcApply(){
   const a=$("#itAmt"); if(a) a.value = v;
   closeCalc();
 }
+/* 品項分類：手動選＝鎖定；自動猜＝跟著品名 */
+function setCat(k){ if(!editDraftItem) return; editDraftItem.cat=k; editDraftItem._catManual=true; renderItemForm(); }
+function refreshCatPick(){
+  if(!editDraftItem || editDraftItem._catManual) return;
+  const eff = guessCat(editDraftItem.name);
+  document.querySelectorAll('.catpick .catchip').forEach(ch=>{
+    const on = ch.dataset.cat===eff, col = ch.dataset.color;
+    ch.style.borderColor = on ? col : '';
+    ch.style.background = on ? col+'22' : '';
+  });
+}
 /* 編輯歷史懸浮視窗 */
 function openHistory(){ renderHistory(); $("#historyModal").classList.remove("hidden"); }
 function closeHistory(){ $("#historyModal").classList.add("hidden"); }
@@ -1035,11 +1087,16 @@ function renderItemForm(){
   const allOn = d.sharerIds.length === m.length;
   const sel = m.filter(p=>d.sharerIds.includes(p.id));
   const amountSum = sel.reduce((s,p)=> s + (Number(sp.values[p.id])||0), 0);
+  const effCat = d.cat || guessCat(d.name);
   $("#main").innerHTML = `
     <div class="card">
       <div class="sect-title">${d._isNew?"新增項目":"編輯項目"}</div>
       <label class="fld"><span>品名</span>
         <input id="itName" placeholder="例如：海鮮鍋、啤酒、Uber" value="${esc(d.name)}"></label>
+      <div class="sect-title" style="margin-top:2px;">分類${d.cat?'':'（打品名會自動猜）'}</div>
+      <div class="chips catpick">
+        ${CATS.map(c=>`<span class="chip catchip" data-cat="${c.k}" data-color="${c.color}" style="${c.k===effCat?`border-color:${c.color};background:${c.color}22;`:''}" onclick="setCat('${c.k}')"><span class="cati" style="color:${c.color}">${c.icon}</span>${c.label}</span>`).join("")}
+      </div>
       ${mode!=='amount'
         ? `<label class="fld"><span>金額</span>
             <div class="amt-row">
@@ -1086,7 +1143,7 @@ function renderItemForm(){
 function syncDraftInputs(){
   // 讓表單輸入即時回寫到 draft（切換 chip 重繪時不丟失）
   const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer"), dt=$("#itAt"), nt=$("#itNote");
-  if(n) n.oninput = ()=> editDraftItem.name = n.value;
+  if(n) n.oninput = ()=>{ editDraftItem.name = n.value; refreshCatPick(); };
   if(a) a.oninput = ()=> editDraftItem.amount = a.value;
   if(p) p.onchange = ()=> editDraftItem.payerId = p.value;
   if(dt) dt.onchange = ()=> editDraftItem.at = dt.value;
@@ -1118,6 +1175,7 @@ function saveItem(){
   d.payerId = $("#itPayer").value;
   d.at = ($("#itAt") && $("#itAt").value) || d.at || nowLocal();
   d.note = ($("#itNote") && $("#itNote").value || "").trim();
+  d.cat = d.cat || guessCat(d.name); delete d._catManual;
   if(d.sharerIds.length===0){ toast("至少要有一個人分攤"); return; }
   const mode = (d.split && d.split.mode) || 'equal';
   if(mode==='amount'){
