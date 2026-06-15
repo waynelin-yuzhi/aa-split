@@ -112,6 +112,8 @@
   .itemrow .info .nm{font-weight:600;}
   .itemrow .info .sub{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .itemrow .price{font-weight:700; color:#f0726a;}
+  .daygroup{display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:13px; font-weight:650; color:var(--accent); padding:13px 2px 5px;}
+  .daygroup .daysum{color:var(--muted); font-weight:600; font-size:12px;}
   .itemrow .caticon{flex:0 0 auto; width:30px; height:30px; display:flex; align-items:center; justify-content:center;}
   .itemrow .caticon svg{width:25px; height:25px;}
   .catpick{gap:7px;}
@@ -816,7 +818,7 @@ function renderEdit(isNew){
       <div class="sect-title">帳目（${items.length} 筆）</div>
       <div id="itemList">
         ${items.length===0 ? '<div class="faint" style="padding:8px 2px;">還沒有帳目——點右下角的 ＋ 新增一筆</div>' :
-          items.slice().sort((a,b)=>(a.at||'').localeCompare(b.at||'')).map(it=>itemRowHTML(it)).join("")}
+          itemListHTML(items)}
       </div>
       ${adjs.length ? `<hr class="sep">${adjs.map(a=>adjRowHTML(a, sub)).join("")}` : ''}
       ${adjs.length>0 ? `<div class="recon" style="margin-top:10px;color:var(--muted);background:var(--panel2);">小計 ${money(sub)}　→　總額 ${money(tot)}</div>` : ''}
@@ -845,6 +847,29 @@ function debouncedPersist(){ clearTimeout(_persistTimer); _persistTimer = setTim
 async function finishEdit(){ await persistCurrent(); toast("已儲存"); renderList(); }
 function fabAdd(){ if(!current.members.length){ toast("先在上面「成員」加人"); return; } startAddItem(); }
 
+// 日期標頭：YYYY-MM-DD → M/D（週X）
+function fmtDateHeader(key){
+  if(!key) return '未標日期';
+  const [y,mo,da] = key.split('-').map(Number);
+  const wd = ['日','一','二','三','四','五','六'][new Date(y, mo-1, da).getDay()];
+  return `${mo}/${da}（週${wd}）`;
+}
+// 帳目清單：依時間排序；偵測到跨多天就自動依日期分組（每組標頭含當日小計），同一天則平鋪
+function itemListHTML(items){
+  const sorted = items.slice().sort((a,b)=>(a.at||'').localeCompare(b.at||''));
+  const keys = sorted.map(it => (it.at||'').split('T')[0] || '');
+  if(new Set(keys).size <= 1) return sorted.map(itemRowHTML).join("");
+  let html = '', curKey = null;
+  sorted.forEach((it, i)=>{
+    if(keys[i] !== curKey){
+      curKey = keys[i];
+      const dayTotal = sorted.reduce((s,x,j)=> j>=0 && keys[j]===curKey ? s+effectiveItemAmount(x) : s, 0);
+      html += `<div class="daygroup">${esc(fmtDateHeader(curKey))}<span class="daysum num">${money(dayTotal)}</span></div>`;
+    }
+    html += itemRowHTML(it);
+  });
+  return html;
+}
 function itemRowHTML(it){
   const sn = (it.sharerIds||[]).length;
   const allN = current.members.length;
