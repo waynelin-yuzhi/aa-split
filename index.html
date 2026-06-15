@@ -148,7 +148,10 @@
   .qbtn{flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:5px; background:var(--panel);
     border:1px solid var(--line); color:var(--ink); border-radius:16px; padding:12px 18px; font-size:12.5px;
     font-weight:600; cursor:pointer; min-width:66px;}
-  .qbtn .qi{font-size:20px; line-height:1;}
+  .qbtn .qi{color:var(--accent); display:flex; align-items:center; justify-content:center;}
+  .qbtn .qi svg{width:25px; height:25px; display:block;}
+  .btn .bico{display:inline-flex; vertical-align:-5px; margin-right:6px;}
+  .btn .bico svg{width:20px; height:20px;}
   .qbtn.dim{opacity:.4;}
   .qbtn:active{transform:translateY(1px);}
   .fab{position:fixed; right:18px; bottom:24px; width:60px; height:60px; border-radius:50%; background:var(--accent);
@@ -167,13 +170,6 @@
   .avatar-lg{width:48px; height:48px; border-radius:50%; flex:0 0 auto; background:var(--panel2) center/cover no-repeat;
     display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px;}
   .pm-name{font-size:17px; font-weight:700;}
-  /* 成員：壓成一條可點的小框，點開懸浮視窗管理 */
-  .memrow{display:flex; align-items:center; gap:10px; cursor:pointer;}
-  .memrow-label{flex:0 0 auto; background:var(--panel2); border:1px solid var(--line); border-radius:999px;
-    padding:5px 12px; font-size:13px; font-weight:650; color:var(--ink);}
-  .memrow-names{flex:1 1 auto; min-width:0; color:var(--muted); font-size:14px;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .memrow-chev{flex:0 0 auto; color:var(--faint); font-size:22px; line-height:1; margin-left:2px;}
   .mm-add{display:flex; gap:8px;}
   .mm-add input{flex:1 1 auto; min-width:0;}
   .mm-add .btn{flex:0 0 auto; width:auto;}
@@ -455,6 +451,14 @@ const esc = s => String(s??"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;'
 const money = n => "$" + Math.round(n).toLocaleString("en-US");
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
+// UI 線條圖示（薄荷色、圓角，呼應品牌收據+勾的調性；用 currentColor 繼承按鈕色）
+const ICONS = {
+  members: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8" r="3"/><path d="M3 19c0-3 2.4-5 5.5-5s5.5 2 5.5 5"/><path d="M16 5.7a2.8 2.8 0 0 1 0 5.3"/><path d="M17.2 14.1c2 .5 3.3 2.1 3.3 4.4"/></svg>`,
+  invite: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3 2.4-5 5.5-5s5.5 2 5.5 5"/><line x1="18.5" y1="6.5" x2="18.5" y2="12.5"/><line x1="15.5" y1="9.5" x2="21.5" y2="9.5"/></svg>`,
+  calc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><line x1="8.5" y1="6.8" x2="15.5" y2="6.8"/><circle cx="9.2" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="9.2" cy="16.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="16.2" r="1.1" fill="currentColor" stroke="none"/></svg>`,
+  percent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="6.5" y1="17.5" x2="17.5" y2="6.5"/><circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="16" r="2.2"/></svg>`
+};
+
 let liffReady = false, inLineClient = false;
 let ACCESS_TOKEN = null, MY_UID = null, MY_NAME = null, MY_PIC = null;   // 身分（LINE 登入後填）
 // 個人資料（本機，依 LINE uid）：預設收款資訊，會套到我在各聚會的成員身分
@@ -604,15 +608,10 @@ function renderEdit(isNew){
     </div>
 
     <div class="quickbar">
-      ${CLOUD && current.shareToken ? `<button class="qbtn" onclick="shareInvite()"><span class="qi">🔗</span>邀請</button>` : ''}
-      <button class="qbtn ${canCompute?'':'dim'}" onclick="goResult()"><span class="qi">🧮</span>算分帳</button>
-      <button class="qbtn" onclick="quickServiceCharge()" ${items.length===0?'disabled style="opacity:.4"':''}><span class="qi">％</span>服務費</button>
-    </div>
-
-    <div class="card memrow" onclick="openMembers()">
-      <span class="memrow-label">成員 ${m.length}</span>
-      <span class="memrow-names">${m.length ? m.map(p=>esc(p.name)+(p.uid===MY_UID?'（我）':'')).join('・') : '還沒有成員，點此新增'}</span>
-      <span class="memrow-chev">›</span>
+      <button class="qbtn" onclick="openMembers()"><span class="qi">${ICONS.members}</span>成員 ${m.length}</button>
+      ${CLOUD && current.shareToken ? `<button class="qbtn" onclick="shareInvite()"><span class="qi">${ICONS.invite}</span>邀請</button>` : ''}
+      <button class="qbtn ${canCompute?'':'dim'}" onclick="goResult()"><span class="qi">${ICONS.calc}</span>算分帳</button>
+      <button class="qbtn" onclick="quickServiceCharge()" ${items.length===0?'disabled style="opacity:.4"':''}><span class="qi">${ICONS.percent}</span>服務費</button>
     </div>
 
     <div class="card">
@@ -627,7 +626,7 @@ function renderEdit(isNew){
       <button class="btn ghost block" onclick="startAddAdj()" ${items.length===0?'disabled style="opacity:.45"':''}>＋ 服務費 / 折扣</button>
     </div>
 
-    <button class="btn block" onclick="goResult()" ${canCompute?'':'disabled style="opacity:.45"'}>🧮 算分帳 →</button>
+    <button class="btn block" onclick="goResult()" ${canCompute?'':'disabled style="opacity:.45"'}><span class="bico">${ICONS.calc}</span>算分帳 →</button>
     <div class="spacer"></div>
     <div class="row">
       <button class="btn ghost" onclick="finishEdit()">✓ 完成</button>
