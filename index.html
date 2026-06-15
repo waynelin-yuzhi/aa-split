@@ -64,6 +64,8 @@
     font-size:14px; cursor:pointer; user-select:none;}
   .chip.on{background:var(--accent); color:#0c1410; border-color:var(--accent);}
   .chip.me{border-color:var(--accent);}
+  .chip.claimchip{cursor:pointer; border-color:var(--accent); color:var(--ink); font-weight:650; padding:10px 16px; font-size:15px;}
+  .chip.claimchip:active{background:var(--accent); color:#0c1410;}
   .chip .x{color:var(--faint); font-weight:700;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
   .empty{text-align:center; color:var(--muted); padding:48px 20px;}
@@ -432,9 +434,13 @@ const Store = {
     const row = await rpc("g_get_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN });
     return (row && row.id) ? rowToGathering(row) : null;
   },
-  async joinBySlug(slug){ // 短連結加入：把我加進去
+  async joinBySlug(slug){ // 短連結加入：把我加進去（新成員）
     const row = await rpc("g_join_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN,
       p_my_name: MY_NAME||"我", p_my_member_id: uid() });
+    return rowToGathering(row);
+  },
+  async claimBySlug(slug, memberId){ // 認領：把我綁到 host 預建的某個名字
+    const row = await rpc("g_claim_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN, p_member_id: memberId });
     return rowToGathering(row);
   },
   async remove(id){ await rpc("g_delete", { p_id:id, p_access_token: ACCESS_TOKEN }); }
@@ -1174,6 +1180,19 @@ function showJoinPrompt(g, token){
   $("#title").textContent = "邀請加入";
   $("#backBtn").classList.add("hidden"); $("#brandIcon").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
   const tot = grandTotal(g.items, g.adjustments);
+  // host 預建、還沒人認領的名字 → 讓我先認領（避免重複）
+  const unclaimed = (g.members||[]).filter(m=>!m.uid);
+  const joinSection = unclaimed.length ? `
+    <div class="sect-title" style="margin:20px 2px 8px;">你是哪一位？</div>
+    <div class="faint" style="margin:0 2px 12px;">在名單裡找到自己就點它認領；不在名單就用你的 LINE 名字加入。</div>
+    <div class="chips">
+      ${unclaimed.map(m=>`<span class="chip claimchip" onclick="claimMember('${m.id}')">${esc(m.name)}</span>`).join("")}
+    </div>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="acceptJoin()">＋ 用我的 LINE 名字（${esc(MY_NAME||"我")}）加入</button>
+  ` : `
+    <button class="btn block" onclick="acceptJoin()">加入這場聚會</button>
+  `;
   $("#main").innerHTML = `
     <div class="card" style="text-align:center;">
       <img src="logo_icon.svg" alt="" style="width:56px;height:65px;">
@@ -1182,7 +1201,7 @@ function showJoinPrompt(g, token){
       <div class="faint" style="margin-top:4px;">${esc(g.date||"")} ・ ${(g.members||[]).length} 人 ・ 總額 ${money(tot)}</div>
       <div class="muted" style="margin-top:14px;">你被邀請加入這場分帳。加入後它會出現在你的聚會列表，你也能新增自己的支出。</div>
     </div>
-    <button class="btn block" onclick="acceptJoin()">加入這場聚會</button>
+    ${joinSection}
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="declineJoin()">先不要</button>`;
 }
@@ -1191,7 +1210,24 @@ async function acceptJoin(){
   $("#main").innerHTML = loadingHTML("加入中…");
   try{ current = _invite.slug ? await Store.joinBySlug(_invite.slug) : await Store.join(_invite.id, _invite.token); }
   catch(e){ console.error(e); toast("加入失敗"); return renderList(); }
-  history.replaceState(null, "", location.pathname);   // 清掉 hash 邀請參數
+  finishJoin();
+}
+async function claimMember(memberId){
+  if(!_invite || !_invite.slug) return;
+  $("#main").innerHTML = loadingHTML("認領中…");
+  try{ current = await Store.claimBySlug(_invite.slug, memberId); }
+  catch(e){
+    console.error(e);
+    if(String(e.message||"").includes("already claimed")){
+      toast("這個名字已被認領了，換一個");
+      try{ const fresh = await Store.getBySlug(_invite.slug); if(fresh) return showJoinPrompt(fresh, _invite.token); }catch(_){}
+    } else toast("認領失敗");
+    return renderList();
+  }
+  finishJoin();
+}
+function finishJoin(){
+  history.replaceState(null, "", location.pathname);   // 清掉邀請參數
   _invite = null;
   if(applyProfileToCurrent()) persistCurrent();
   subscribeRealtime(current.id);
