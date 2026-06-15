@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
+<link rel="icon" type="image/svg+xml" href="app_icon.svg">
+<link rel="apple-touch-icon" href="app_icon.svg">
 <title>欸，算一下！ Let's Split</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -28,6 +30,8 @@
     backdrop-filter:saturate(140%) blur(10px); border-bottom:1px solid var(--line);
     display:flex; align-items:center; gap:10px; padding:14px 16px;}
   header.bar h1{font-size:18px; margin:0; font-weight:650; flex:1;}
+  .brand-icon{width:26px; height:30px; flex:0 0 auto;}
+  .empty img.logo-mark{width:62px; height:72px; opacity:.95;}
   .btn{appearance:none; border:0; border-radius:12px; padding:11px 16px; font-size:15px;
     font-weight:600; color:#0c1410; background:var(--accent); cursor:pointer;}
   .btn:active{transform:translateY(1px);}
@@ -122,6 +126,7 @@
 <div class="app">
   <header class="bar">
     <button id="backBtn" class="iconbtn hidden" aria-label="返回">‹</button>
+    <img id="brandIcon" class="brand-icon" src="logo_icon.svg" alt="">
     <h1 id="title">欸，算一下！</h1>
     <button id="addGatheringBtn" class="btn sm">＋ 新聚會</button>
   </header>
@@ -350,6 +355,7 @@ async function renderList(){
   hideSyncBanner();
   $("#title").textContent = "欸，算一下！";
   $("#backBtn").classList.add("hidden");
+  $("#brandIcon").classList.remove("hidden");
   $("#addGatheringBtn").classList.remove("hidden");
   $("#main").innerHTML = loadingHTML();
 
@@ -360,8 +366,8 @@ async function renderList(){
   if(gs.length === 0){
     $("#main").innerHTML = `
       <div class="empty">
-        <div class="big">🧾</div>
-        <div>還沒有任何聚會</div>
+        <img class="logo-mark" src="logo_icon.svg" alt="">
+        <div style="margin-top:10px;">還沒有任何聚會</div>
         <div class="faint" style="margin-top:6px;">建立一場、或請朋友把邀請連結傳給你</div>
         <div class="spacer"></div><div class="spacer"></div>
         <button class="btn" onclick="newGathering()">＋ 建立第一場聚會</button>
@@ -404,6 +410,7 @@ function renderEdit(isNew){
   view = "edit";
   $("#title").textContent = isNew ? "新聚會" : "編輯聚會";
   $("#backBtn").classList.remove("hidden");
+  $("#brandIcon").classList.add("hidden");
   $("#addGatheringBtn").classList.add("hidden");
 
   const m = current.members, items = current.items;
@@ -761,6 +768,7 @@ function renderResult(){
   view = "result";
   $("#title").textContent = "分帳結果";
   $("#backBtn").classList.remove("hidden");
+  $("#brandIcon").classList.add("hidden");
   $("#addGatheringBtn").classList.add("hidden");
 
   const r = computeSplit(current.members, current.items, current.adjustments);
@@ -892,7 +900,7 @@ $("#addGatheringBtn").addEventListener("click", newGathering);
  * 邀請加入畫面：持有效連結但還不是成員 → 問要不要加入
  * ========================================================================= */
 function showLoginError(msg){
-  $("#backBtn").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
+  $("#backBtn").classList.add("hidden"); $("#brandIcon").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
   const url = "https://liff.line.me/" + LIFF_ID;
   $("#main").innerHTML = `<div class="empty"><div class="big">💬</div>
     <div>${esc(msg)}</div>
@@ -905,11 +913,12 @@ function showJoinPrompt(g, token){
   _invite = { id:g.id, token };
   view = "join";
   $("#title").textContent = "邀請加入";
-  $("#backBtn").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
+  $("#backBtn").classList.add("hidden"); $("#brandIcon").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
   const tot = grandTotal(g.items, g.adjustments);
   $("#main").innerHTML = `
     <div class="card" style="text-align:center;">
-      <div style="font-size:40px;">🧾</div>
+      <img src="logo_icon.svg" alt="" style="width:56px;height:65px;">
+
       <div style="font-size:19px;font-weight:700;margin-top:6px;">${esc(g.title||"未命名聚會")}</div>
       <div class="faint" style="margin-top:4px;">${esc(g.date||"")} ・ ${(g.members||[]).length} 人 ・ 總額 ${money(tot)}</div>
       <div class="muted" style="margin-top:14px;">你被邀請加入這場分帳。加入後它會出現在你的聚會列表，你也能新增自己的支出。</div>
