@@ -98,14 +98,16 @@
   .person .ow{color:var(--muted); width:120px; text-align:right;}
   .person .net{width:96px; text-align:right; font-weight:650;}
   .net.pos{color:var(--get);} .net.neg{color:var(--pay);}
-  .transfer{display:flex; align-items:center; gap:8px; padding:10px 12px; background:#171b22;
+  .transfer{display:flex; align-items:center; gap:6px; padding:10px 12px; background:#171b22;
     border:1px solid #242a34; border-radius:12px; margin-bottom:8px; font-size:15.5px;}
-  .transfer .from{color:var(--pay); font-weight:650;}
+  .transfer .from{color:var(--pay); font-weight:650; white-space:nowrap;}
   .transfer .arr{color:var(--faint);}
-  .transfer .to{color:var(--get); font-weight:650;}
-  .transfer .v{margin-left:auto; font-weight:750;}
-  .transfer .paidbtn{margin-left:10px; background:var(--panel2); color:var(--muted); border:1px solid var(--line);
-    border-radius:8px; padding:5px 10px; font-size:12px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
+  .transfer .to{color:var(--get); font-weight:650; white-space:nowrap;}
+  .transfer .v{margin-left:auto; font-weight:750; white-space:nowrap;}
+  .transfer .paidbtn{background:var(--panel2); color:var(--muted); border:1px solid var(--line);
+    border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
+  .transfer .copyacct{background:rgba(125,211,168,.12); color:var(--accent); border:1px solid rgba(125,211,168,.3);
+    border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
   .transfer.paid{opacity:.55;}
   .transfer.paid .v{text-decoration:line-through;}
   .transfer.paid .paidbtn{background:rgba(125,211,168,.15); color:var(--accent); border-color:rgba(125,211,168,.3);}
@@ -994,9 +996,10 @@ function renderResult(){
         <span class="arr">→</span>
         <span class="to">${esc(r.nameOf[t.to])}</span>
         <span class="v num">${money(t.amount)}</span>
+        ${(!paid && pay)?`<button class="copyacct" onclick="copyPay('${t.to}')">複製帳號</button>`:''}
         <button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">${paid?'✓ 已付':'標記已付'}</button>
       </div>
-      ${(!paid && pay)?`<div class="payinfo">↳ 轉給 ${esc(r.nameOf[t.to])}：<span class="num">${esc(pay)}</span><button class="copybtn" onclick="copyPay('${t.to}')">複製</button></div>`:''}`;
+      ${(!paid && pay)?`<div class="payinfo">↳ 轉給 ${esc(r.nameOf[t.to])}：<span class="num">${esc(pay)}</span></div>`:''}`;
       }).join("") +
       (r.transfers.length>0?`<div class="settle-prog">結清進度 ${paidCount}/${r.transfers.length}${paidCount===r.transfers.length?' ✅ 全部還清！':''}</div>`:'');
 
