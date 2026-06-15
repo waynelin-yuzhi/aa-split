@@ -114,12 +114,17 @@
     border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
   .transfer .copyacct{background:rgba(125,211,168,.12); color:var(--accent); border:1px solid rgba(125,211,168,.3);
     border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
+  .transfer.pending{border-color:rgba(240,190,90,.4);}
+  .transfer .confirmbtn{background:var(--panel2); color:var(--accent); border:1px solid rgba(125,211,168,.45);
+    border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
+  .transfer .confirmbtn.me{background:var(--accent); color:#0c1410; border-color:var(--accent); font-weight:700;}
   .transfer.paid{opacity:.55;}
   .transfer.paid .v{text-decoration:line-through;}
   .transfer.paid .paidbtn{background:rgba(125,211,168,.15); color:var(--accent); border-color:rgba(125,211,168,.3);}
   .payinfo{font-size:12.5px; color:var(--muted); margin:-3px 2px 9px 8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-  .payinfo .copybtn{background:var(--panel2); color:var(--accent); border:1px solid var(--line); border-radius:7px;
-    padding:3px 10px; font-size:11.5px; cursor:pointer; flex:0 0 auto;}
+  .payinfo .remindbtn{background:rgba(125,211,168,.15); color:var(--accent); border:1px solid rgba(125,211,168,.4);
+    border-radius:7px; padding:3px 10px; font-size:11.5px; cursor:pointer; flex:0 0 auto;}
+  .payinfo .undobtn{background:transparent; color:var(--faint); border:0; padding:3px 4px; font-size:11.5px; cursor:pointer; text-decoration:underline;}
   .settle-prog{font-size:12.5px; color:var(--muted); text-align:center; margin-top:10px;}
   .verify{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--accent);
     background:rgba(125,211,168,.1); border:1px solid rgba(125,211,168,.25); border-radius:999px; padding:5px 11px; margin-top:14px;}
@@ -1031,25 +1036,36 @@ function renderResult(){
     </div>`;
   }).join("");
 
-  const settled = new Set(current.settlements||[]);
-  const paidCount = r.transfers.filter(t=>settled.has(t.from+">"+t.to)).length;
+  const smap = settleMap();
+  const stOf = t => smap[t.from+">"+t.to] || {paid:false, confirmed:false};
+  const confirmedCount = r.transfers.filter(t=>stOf(t).confirmed).length;
+  const pendingCount = r.transfers.filter(t=>{ const s=stOf(t); return s.paid && !s.confirmed; }).length;
   const transferRows = r.transfers.length===0
     ? `<div class="faint">大家剛好打平，不用轉帳 🎉</div>`
     : r.transfers.map(t=>{
-        const key = t.from+">"+t.to, paid = settled.has(key);
+        const st = stOf(t);
         const toM = current.members.find(m=>m.id===t.to);
         const pay = toM && toM.payInfo && toM.payInfo.trim();
-        return `<div class="transfer ${paid?'paid':''}">
+        const iAmPayee = MY_UID && toM && toM.uid===MY_UID;
+        const stateCls = st.confirmed ? 'paid' : (st.paid ? 'pending' : '');
+        // 主按鈕：未付→標記已付；已付待確認→確認收到（我是收款人就高亮）；已確認→已收到
+        let topBtn;
+        if(!st.paid) topBtn = `${pay?`<button class="copyacct" onclick="copyPay('${t.to}')">複製帳號</button>`:''}<button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">標記已付</button>`;
+        else if(!st.confirmed) topBtn = `<button class="confirmbtn ${iAmPayee?'me':''}" onclick="toggleConfirm('${t.from}','${t.to}')">確認收到</button>`;
+        else topBtn = `<button class="paidbtn" onclick="toggleConfirm('${t.from}','${t.to}')">✓ 已收到</button>`;
+        // 子行：未付→收款帳號；已付待確認→等對方確認 + 提醒/改未付
+        let sub = '';
+        if(!st.paid && pay) sub = `<div class="payinfo">↳ 轉給 ${esc(r.nameOf[t.to])}：<span class="num">${esc(pay)}</span></div>`;
+        else if(st.paid && !st.confirmed) sub = `<div class="payinfo">⏳ 已標記付款，等 ${esc(r.nameOf[t.to])} 確認收到<button class="remindbtn" onclick="remindReceipt('${t.from}','${t.to}',${t.amount})">🔔 提醒對方</button><button class="undobtn" onclick="toggleSettle('${t.from}','${t.to}')">改未付</button></div>`;
+        return `<div class="transfer ${stateCls}">
         <span class="from">${esc(r.nameOf[t.from])}</span>
         <span class="arr">→</span>
         <span class="to">${esc(r.nameOf[t.to])}</span>
         <span class="v num">${money(t.amount)}</span>
-        ${(!paid && pay)?`<button class="copyacct" onclick="copyPay('${t.to}')">複製帳號</button>`:''}
-        <button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">${paid?'✓ 已付':'標記已付'}</button>
-      </div>
-      ${(!paid && pay)?`<div class="payinfo">↳ 轉給 ${esc(r.nameOf[t.to])}：<span class="num">${esc(pay)}</span></div>`:''}`;
+        ${topBtn}
+      </div>${sub}`;
       }).join("") +
-      (r.transfers.length>0?`<div class="settle-prog">結清進度 ${paidCount}/${r.transfers.length}${paidCount===r.transfers.length?' ✅ 全部還清！':''}</div>`:'');
+      (r.transfers.length>0?`<div class="settle-prog">結清進度 ${confirmedCount}/${r.transfers.length}${pendingCount?`・${pendingCount} 筆待對方確認`:''}${confirmedCount===r.transfers.length?' ✅ 全部確認收款！':''}</div>`:'');
 
   const verify = r.allOk
     ? `<div class="verify">✓ 六道驗算全部通過</div>`
@@ -1094,13 +1110,41 @@ function renderResult(){
   if(!inLineClient){ const b=$("#shareBtn"); b.textContent="系統分享"; }
 }
 
-function toggleSettle(from, to){
-  const key = from+">"+to;
-  current.settlements = current.settlements || [];
-  const i = current.settlements.indexOf(key);
-  if(i>=0) current.settlements.splice(i,1); else current.settlements.push(key);
-  persistCurrent();
-  renderResult();
+// settlement 兩段式：{ "from>to": {paid, confirmed} }；相容舊的字串陣列（視為已付+已確認）
+function normSettle(s){
+  const out = {};
+  if(Array.isArray(s)){ for(const k of s){ if(typeof k==="string") out[k]={paid:true,confirmed:true}; } }
+  else if(s && typeof s==="object"){ for(const k in s){ const v=s[k];
+    if(v===true) out[k]={paid:true,confirmed:true};
+    else if(v && typeof v==="object") out[k]={paid:!!v.paid, confirmed:!!v.confirmed}; } }
+  return out;
+}
+function settleMap(){
+  if(!current.settlements || typeof current.settlements!=="object" || Array.isArray(current.settlements))
+    current.settlements = normSettle(current.settlements);
+  return current.settlements;
+}
+function toggleSettle(from, to){   // 付款人：標記/取消「已付」（取消連帶清掉確認）
+  const map = settleMap(), k = from+">"+to;
+  if(map[k] && map[k].paid) delete map[k];
+  else map[k] = {paid:true, confirmed:false};
+  persistCurrent(); renderResult();
+}
+function toggleConfirm(from, to){  // 收款人：確認收到 / 取消確認
+  const map = settleMap(), k = from+">"+to;
+  if(!map[k] || !map[k].paid) return;
+  map[k].confirmed = !map[k].confirmed;
+  persistCurrent(); renderResult();
+}
+function remindReceipt(from, to, amount){   // 一鍵在 LINE 提醒收款人確認（使用者自己選對象送出）
+  const fromN = (lastResult && lastResult.nameOf[from]) || "", toN = (lastResult && lastResult.nameOf[to]) || "";
+  const link = current.slug ? `https://liff.line.me/${LIFF_ID}?g=${current.slug}` : "";
+  const txt = `【${current.title||"欸，算一下！"}】${fromN} 已付給 ${toN} ${money(amount)}，請 ${toN} 確認收到 🙏${link?`\n${link}`:""}`;
+  if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
+    liff.shareTargetPicker([{type:"text", text:txt}]).then(()=>toast("已開啟提醒")).catch(()=>toast("已取消"));
+  } else if(navigator.share){ navigator.share({text:txt}).catch(()=>{}); }
+  else if(navigator.clipboard?.writeText){ navigator.clipboard.writeText(txt).then(()=>toast("已複製提醒訊息，貼給對方")).catch(()=>fallbackCopy(txt)); }
+  else fallbackCopy(txt);
 }
 function copyPay(memberId){
   const m = current.members.find(x=>x.id===memberId);
@@ -1111,7 +1155,7 @@ function copyPay(memberId){
 }
 function resultText(){
   const r = lastResult;
-  const settled = new Set(current.settlements||[]);
+  const smap = normSettle(current.settlements);
   const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
   let s = `🧾 ${current.title||"欸，算一下！"}（${current.date||""}）\n`;
   if(r.adjustment){
@@ -1129,10 +1173,11 @@ function resultText(){
   s += `\n💸 最少轉帳\n`;
   if(r.transfers.length===0) s += `・大家剛好打平，免轉帳 🎉\n`;
   else for(const t of r.transfers){
-    const paid = settled.has(t.from+">"+t.to);
+    const st = smap[t.from+">"+t.to] || {};
+    const mark = st.confirmed ? " ✅已確認收款" : (st.paid ? " ⏳已付待確認" : "");
     const toM = current.members.find(m=>m.id===t.to);
-    const pay = (!paid && toM && toM.payInfo && toM.payInfo.trim());
-    s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}${paid?" ✅已付":""}${pay?`（收款：${toM.payInfo.trim()}）`:""}\n`;
+    const pay = (!st.paid && toM && toM.payInfo && toM.payInfo.trim());
+    s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}${mark}${pay?`（收款：${toM.payInfo.trim()}）`:""}\n`;
   }
   if(r.allOk) s += `\n✅ 已驗算`;
   return s;
