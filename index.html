@@ -200,6 +200,17 @@
     color:var(--muted); border-radius:10px; padding:6px 11px; font-size:13px;}
   .gsum-meta{color:var(--muted); font-size:13.5px;}
   .gsum-meta b{color:var(--ink);}
+  .gsum{position:relative;}
+  .gsum.has-cover{min-height:148px; display:flex; flex-direction:column; justify-content:flex-end; background-size:cover; background-position:center; border:0;}
+  .gsum.has-cover .gtitle{color:#fff; text-shadow:0 1px 5px rgba(0,0,0,.7);}
+  .gsum.has-cover .gtitle::placeholder{color:rgba(255,255,255,.75);}
+  .gsum.has-cover .gsum-meta{color:rgba(255,255,255,.95); text-shadow:0 1px 4px rgba(0,0,0,.7);}
+  .gsum.has-cover .gsum-meta b{color:#fff;}
+  .gsum.has-cover .gsum-row input[type=date]{background:rgba(0,0,0,.4); border-color:rgba(255,255,255,.35); color:#fff;}
+  .cover-ctrl{position:absolute; top:10px; right:10px; display:flex; gap:6px; z-index:2;}
+  .cover-btn{background:rgba(0,0,0,.45); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:999px;
+    padding:5px 11px; font-size:12px; cursor:pointer; backdrop-filter:blur(4px);}
+  .gsum:not(.has-cover) .cover-btn{background:var(--panel2); color:var(--muted); border-color:var(--line); backdrop-filter:none;}
   .quickbar{display:flex; gap:10px; overflow-x:auto; padding:0 0 14px;}
   .qbtn{flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:5px; background:var(--panel);
     border:1px solid var(--line); color:var(--ink); border-radius:16px; padding:12px 18px; font-size:12.5px;
@@ -501,7 +512,7 @@ function rowToGathering(row, token){
     currency: row.currency || "TWD", status: row.status || "open",
     members: row.participants || [], items: row.items || [],
     adjustments: row.adjustments || [], settlements: row.settlements || [],
-    history: row.history || []
+    history: row.history || [], cover: row.cover || ''
   };
 }
 
@@ -531,7 +542,7 @@ const Store = {
     const row = await rpc("g_save", { p_id:g.id, p_access_token: ACCESS_TOKEN, p_title:g.title||null,
       p_event_date:g.date||null, p_currency:g.currency||"TWD", p_status:g.status||"open",
       p_participants:g.members||[], p_items:g.items||[], p_adjustments:g.adjustments||[], p_settlements:g.settlements||[],
-      p_history:g.history||[] });
+      p_history:g.history||[], p_cover:g.cover||"" });
     return rowToGathering(row);
   },
   async get(id, token){   // 成員可讀；或持邀請 token 可讀（尚未加入）
@@ -838,7 +849,12 @@ function renderEdit(isNew){
   const canCompute = items.length>0 && tot>0;
   const meId = getMe();
   $("#main").innerHTML = `
-    <div class="card gsum">
+    <div class="card gsum ${validCover()?'has-cover':''}"${validCover()?` style="background-image:linear-gradient(rgba(0,0,0,.4),rgba(0,0,0,.66)), url('${validCover()}');"`:''}>
+      <div class="cover-ctrl">
+        ${validCover()
+          ? `<button class="cover-btn" onclick="changeCover()">換封面</button><button class="cover-btn" onclick="removeCover()" aria-label="移除封面">✕</button>`
+          : `<button class="cover-btn" onclick="changeCover()">＋ 設封面</button>`}
+      </div>
       <input id="gTitle" class="gtitle" placeholder="帳本名稱（例：墾丁旅遊 / 六月聚餐）" value="${esc(current.title)}">
       <div class="gsum-row">
         <input id="gDate" type="date" value="${esc(current.date)}">
@@ -885,6 +901,58 @@ let _persistTimer = null;
 function debouncedPersist(){ clearTimeout(_persistTimer); _persistTimer = setTimeout(()=>persistCurrent(), 500); }
 async function finishEdit(){ await persistCurrent(); toast("已儲存"); renderList(); }
 function fabAdd(){ if(!current.members.length){ toast("先在上面「成員」加人"); return; } startAddItem(); }
+
+/* 帳本封面底圖：成員可上傳自己的照片；存 Supabase Storage（公開讀、不可猜檔名）。
+   只認我們自家 storage 網址、且不含引號，避免 style 注入。 */
+function validCover(){
+  const c = current && current.cover;
+  return (c && c.indexOf(SUPABASE_URL+'/storage/')===0 && !/['"\\]/.test(c)) ? c : '';
+}
+function randHex(n){
+  if(window.crypto && crypto.getRandomValues){ const a=new Uint8Array(Math.ceil(n/2)); crypto.getRandomValues(a); return [...a].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,n); }
+  return (Date.now().toString(36)+Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/g,'').slice(0,n);
+}
+function downscaleImage(file, maxW, quality){
+  return new Promise((resolve,reject)=>{
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = ()=>{ URL.revokeObjectURL(url);
+      let w=img.width, h=img.height; if(w>maxW){ h=Math.round(h*maxW/w); w=maxW; }
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      c.toBlob(b=> b?resolve(b):reject(new Error('轉檔失敗')), 'image/jpeg', quality);
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('讀取圖片失敗')); };
+    img.src = url;
+  });
+}
+function changeCover(){
+  if(!CLOUD){ toast('需要雲端連線才能上傳封面'); return; }
+  let inp = document.getElementById('coverInput');
+  if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.id='coverInput'; inp.style.display='none'; inp.addEventListener('change', onCoverPicked); document.body.appendChild(inp); }
+  inp.value=''; inp.click();
+}
+async function onCoverPicked(e){
+  const file = e.target.files && e.target.files[0]; if(!file || !current) return;
+  toast('封面上傳中…');
+  try{
+    const blob = await downscaleImage(file, 1280, 0.82);   // 縮圖＋重新編碼（順便去除 EXIF/GPS）
+    const path = `${current.id}/${randHex(24)}.jpg`;
+    const up = await sb.storage.from('covers').upload(path, blob, {contentType:'image/jpeg', upsert:false});
+    if(up.error) throw up.error;
+    current.cover = sb.storage.from('covers').getPublicUrl(path).data.publicUrl;
+    logHistory('更換了封面底圖');
+    await persistCurrent();
+    renderEdit(false);
+    toast('封面已更新');
+  }catch(err){ console.error(err); toast('上傳失敗，請再試一次'); }
+}
+function removeCover(){
+  if(!current || !current.cover) return;
+  if(!confirm('移除封面底圖？')) return;
+  current.cover = '';
+  logHistory('移除了封面底圖');
+  persistCurrent(); renderEdit(false);
+}
 
 // 日期標頭：YYYY-MM-DD → M/D（週X）
 function fmtDateHeader(key){
