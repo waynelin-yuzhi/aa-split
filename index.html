@@ -63,6 +63,8 @@
     border:1px solid var(--line); color:var(--ink); border-radius:999px; padding:8px 13px;
     font-size:14px; cursor:pointer; user-select:none;}
   .chip.on{background:var(--accent); color:#0c1410; border-color:var(--accent);}
+  .chip.me{border-color:var(--accent);}
+  .chip.addchip{color:var(--accent); border-style:dashed; cursor:pointer;}
   .chip .x{color:var(--faint); font-weight:700;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
   .empty{text-align:center; color:var(--muted); padding:48px 20px;}
@@ -565,21 +567,11 @@ function renderEdit(isNew){
     </div>
 
     <div class="card">
-      <div class="sect-title">成員（${m.length}）</div>
+      <div class="sect-title" style="margin-bottom:10px;">成員（${m.length}）</div>
       <div class="chips" id="memberChips">
-        ${m.map(p=>`<span class="chip"><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${p.uid?' <span class="faint" style="font-size:11px;">·已加入</span>':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")}
-        ${m.length===0?'<span class="faint">先加入分帳的人</span>':''}
+        ${m.map(p=>`<span class="chip mchip ${p.uid===MY_UID?'me':''}"><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${p.uid===MY_UID?'（我）':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")}
+        <span class="chip addchip" onclick="addMemberPrompt()">＋ 加人</span>
       </div>
-      <div class="spacer"></div>
-      <div class="row">
-        <input id="memberInput" placeholder="輸入名字後按 Enter 或＋" style="flex:3;">
-        <button class="btn ghost" style="flex:0 0 auto;" onclick="addMember()">＋</button>
-      </div>
-      ${m.length ? `<div class="spacer"></div>
-      <div class="sect-title" style="margin:0 0 8px;">我是誰？ <span class="faint" style="font-weight:400;">記住後，新項目自動帶我當付款人</span></div>
-      <div class="chips">
-        ${m.map(p=>`<span class="chip ${p.id===meId?'on':''}" onclick="setMeAndRerender('${p.id}')">${esc(p.name)}</span>`).join("")}
-      </div>` : ''}
     </div>
 
     <div class="card">
@@ -606,8 +598,6 @@ function renderEdit(isNew){
     <button class="fab" onclick="fabAdd()" aria-label="新增帳目">＋</button>
   `;
 
-  const mi = $("#memberInput");
-  if(mi) mi.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); addMember(); }});
   // 標題/日期即時自動儲存（避免只命名沒加項目就離開、名稱沒存到）
   const gt = $("#gTitle"); if(gt) gt.addEventListener("input", debouncedPersist);
   const gd = $("#gDate");  if(gd) gd.addEventListener("change", ()=>persistCurrent());
@@ -717,6 +707,15 @@ function renameMember(id, ev){
   const t = name.trim(); if(!t) return;
   if(current.members.some(m=>m.id!==id && m.name===t)){ toast("已經有這個名字了"); return; }
   p.name = t; persistCurrent(); renderEdit(false);
+}
+function addMemberPrompt(){
+  const name = prompt("成員名字");
+  if(name===null) return;
+  const t = name.trim(); if(!t) return;
+  if(current.members.some(p=>p.name===t)){ toast("已經有這個名字了"); return; }
+  current.members.push({id:uid(), name:t});
+  persistCurrent();
+  renderEdit(false);
 }
 function removeMember(id, ev){
   ev.stopPropagation();
