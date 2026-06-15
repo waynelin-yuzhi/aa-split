@@ -1233,6 +1233,25 @@ function toggleAllSharers(){
   editDraftItem.sharerIds = (editDraftItem.sharerIds.length===all.length) ? [] : all;
   renderItemForm();
 }
+// 比對舊/新項目，回傳「有變動的欄位＋從→到」陣列（編輯紀錄用，純比對不存快照）
+function diffItem(o, n){
+  const nm = id => { const m=current.members.find(x=>x.id===id); return m?m.name:'?'; };
+  const lab = {equal:'均分', shares:'按份數', amount:'指定金額'};
+  const ch = [];
+  if((o.name||'') !== (n.name||'')) ch.push(`品名「${o.name||''}」→「${n.name||''}」`);
+  const oa=effectiveItemAmount(o), na=effectiveItemAmount(n);
+  if(oa !== na) ch.push(`金額 ${money(oa)}→${money(na)}`);
+  if(o.payerId !== n.payerId) ch.push(`付款人 ${nm(o.payerId)}→${nm(n.payerId)}`);
+  const os=(o.sharerIds||[]).slice().sort().join(','), ns=(n.sharerIds||[]).slice().sort().join(',');
+  if(os !== ns) ch.push(`分攤人改為 ${(n.sharerIds||[]).map(nm).join('、')||'無'}`);
+  const om=(o.split&&o.split.mode)||'equal', nmode=(n.split&&n.split.mode)||'equal';
+  if(om !== nmode) ch.push(`分法 ${lab[om]}→${lab[nmode]}`);
+  else if((nmode==='shares'||nmode==='amount') && JSON.stringify((o.split&&o.split.values)||{})!==JSON.stringify((n.split&&n.split.values)||{})) ch.push('分攤明細調整');
+  if((o.at||'') !== (n.at||'')) ch.push(`時間 ${fmtAt(o.at)||'—'}→${fmtAt(n.at)||'—'}`);
+  if((o.note||'') !== (n.note||'')) ch.push(`備註 ${o.note?`「${o.note}」`:'—'}→${n.note?`「${n.note}」`:'—'}`);
+  if((o.cat||'') !== (n.cat||'')) ch.push(`分類 ${catOf(o.cat).label}→${catOf(n.cat).label}`);
+  return ch;
+}
 function saveItem(){
   const d = editDraftItem;
   d.name = ($("#itName").value||"").trim() || "未命名";
@@ -1254,8 +1273,14 @@ function saveItem(){
   if(d.split && d.split.values) Object.keys(d.split.values).forEach(k=>{ if(!d.sharerIds.includes(k)) delete d.split.values[k]; });
   const isNew = d._isNew; delete d._isNew;
   const i = current.items.findIndex(x=>x.id===d.id);
-  if(i>=0) current.items[i]=d; else current.items.push(d);
-  logHistory(isNew ? `新增「${d.name} ${money(d.amount)}」` : `編輯「${d.name}」`);
+  if(isNew || i<0){
+    current.items.push(d);
+    logHistory(`新增「${d.name} ${money(d.amount)}」`);
+  } else {
+    const changes = diffItem(current.items[i], d);
+    current.items[i]=d;
+    if(changes.length) logHistory(`編輯「${d.name}」：${changes.join('、')}`);
+  }
   editDraftItem=null;
   persistCurrent();
   renderEdit(false);
@@ -1339,8 +1364,12 @@ function saveAdj(){
   current.adjustments = current.adjustments || [];
   const i = current.adjustments.findIndex(x=>x.id===d.id);
   const wasNew = d._isNew;
+  const fmtAdj = x => `${x.sign<0?'−':'+'}${x.kind==='pct'?x.value+'%':money(x.value)}`;
+  const old = (!wasNew && i>=0) ? current.adjustments[i] : null;
   if(i>=0) current.adjustments[i]=a; else current.adjustments.push(a);
-  logHistory(`${wasNew?'新增':'編輯'}調整「${a.name}」`);
+  if(wasNew) logHistory(`新增調整「${a.name}」${fmtAdj(a)}`);
+  else if(old && fmtAdj(old)!==fmtAdj(a)) logHistory(`編輯調整「${a.name}」：${fmtAdj(old)}→${fmtAdj(a)}`);
+  else if(old && old.name!==a.name) logHistory(`調整改名「${old.name}」→「${a.name}」`);
   editDraftAdj=null; persistCurrent(); renderEdit(false);
 }
 function deleteAdj(){
