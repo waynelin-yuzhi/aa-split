@@ -66,6 +66,11 @@
   .chip.me{border-color:var(--accent);}
   .chip.claimchip{cursor:pointer; border-color:var(--accent); color:var(--ink); font-weight:650; padding:10px 16px; font-size:15px;}
   .chip.claimchip:active{background:var(--accent); color:#0c1410;}
+  .mdot{display:inline-block; width:9px; height:9px; border-radius:50%; flex:0 0 auto;
+    border:1.6px solid var(--faint); background:transparent; vertical-align:middle;}
+  .mdot.on{background:var(--accent); border-color:var(--accent);}
+  .mm-legend{display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px;}
+  .mm-legend .lg{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted);}
   .chip .x{color:var(--faint); font-weight:700;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
   .empty{text-align:center; color:var(--muted); padding:48px 20px;}
@@ -216,7 +221,8 @@
     <div class="modal-head">
       <div><div class="pm-name">成員</div><div class="faint" id="mmCount"></div></div>
     </div>
-    <div class="chips" id="mmList" style="margin-bottom:14px;"></div>
+    <div class="chips" id="mmList" style="margin-bottom:10px;"></div>
+    <div class="mm-legend" id="mmLegend"></div>
     <div class="mm-add">
       <input id="mmInput" placeholder="輸入名字新增成員" onkeydown="if(event.key==='Enter'){mmAdd();}">
       <button class="btn" onclick="mmAdd()">加入</button>
@@ -762,10 +768,17 @@ function openMembers(){
 function closeMembers(){ $("#membersModal").classList.add("hidden"); if(view==="edit") renderEdit(false); }
 function renderMembersModal(){
   const m = current.members || [];
-  $("#mmCount").textContent = `${m.length} 名`;
+  const joined = m.filter(p=>p.uid).length;
+  $("#mmCount").textContent = m.length ? `${m.length} 名・${joined} 已用 LINE 加入` : "";
   $("#mmList").innerHTML = m.length
-    ? m.map(p=>`<span class="chip mchip ${p.uid===MY_UID?'me':''}"><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${p.uid===MY_UID?'（我）':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`).join("")
+    ? m.map(p=>{
+        const on = !!p.uid, me = p.uid===MY_UID;
+        return `<span class="chip mchip ${me?'me':''}" title="${on?'已用 LINE 加入':'你預設的名字，還沒人認領'}"><span class="mdot ${on?'on':''}"></span><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${me?'（我）':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`;
+      }).join("")
     : `<span class="faint">還沒有成員，在下面輸入名字加入。</span>`;
+  $("#mmLegend").innerHTML = m.length
+    ? `<span class="lg"><span class="mdot on"></span>已用 LINE 加入</span><span class="lg"><span class="mdot"></span>你預設、還沒人認領</span>`
+    : "";
 }
 function mmAdd(){
   const inp = $("#mmInput"); const t = (inp.value||"").trim(); if(!t) return;
