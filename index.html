@@ -125,7 +125,8 @@
   .itemrow .info{flex:1; min-width:0;}
   .itemrow .info .nm{font-weight:600;}
   .itemrow .info .sub{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .itemrow .price{font-weight:700; color:var(--amount);}
+  .itemrow .price{font-weight:700; color:var(--amount); text-align:right; white-space:nowrap;}
+  .itemrow .price .basconv{display:block; font-size:11px; color:var(--muted); font-weight:500;}
   .daygroup{display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:13px; font-weight:650; color:var(--accent); padding:13px 2px 5px;}
   .daygroup .daysum{color:var(--muted); font-weight:600; font-size:12px;}
   .itemrow .caticon{flex:0 0 auto; width:30px; height:30px; display:flex; align-items:center; justify-content:center;}
@@ -372,16 +373,40 @@ const SUPABASE_KEY = "sb_publishable_WMQUMN8bIlHTwwR95bLueA_VUOI_Drd";
  *   差異：零頭採整數淨值法（殘差由最大收款人吸收），轉帳保證對帳歸零。
  * ========================================================================= */
 // 一筆項目的有效金額（指定金額模式 = 各人金額加總，其餘 = 金額欄）
-function effectiveItemAmount(it){
+// 多幣別：結算幣固定台幣；每筆 item 存 currency + rate（→台幣、輸入時凍結）。缺值＝台幣、rate 1。
+const CURRENCIES = [
+  {code:'TWD', sym:'$',   label:'台幣'}, {code:'JPY', sym:'¥',   label:'日圓'},
+  {code:'USD', sym:'US$', label:'美金'}, {code:'KRW', sym:'₩',   label:'韓元'},
+  {code:'EUR', sym:'€',   label:'歐元'}, {code:'CNY', sym:'CN¥', label:'人民幣'},
+  {code:'HKD', sym:'HK$', label:'港幣'}, {code:'THB', sym:'฿',   label:'泰銖'},
+  {code:'SGD', sym:'S$',  label:'新幣'}, {code:'GBP', sym:'£',   label:'英鎊'},
+  {code:'VND', sym:'₫',   label:'越南盾'},{code:'MYR', sym:'RM',  label:'馬幣'}
+];
+const curSym = code => { const c = CURRENCIES.find(x=>x.code===code); return c?c.sym:(code||'$'); };
+const _rateCache = {};
+async function fetchRate(from, to){   // 1 from = ? to；失敗回 null（讓使用者手填）
+  if(!from || from===to) return 1;
+  const key = from+'_'+to;
+  if(_rateCache[key]) return _rateCache[key];
+  try{
+    const r = await fetch(`https://open.er-api.com/v6/latest/${from}`);
+    const d = await r.json();
+    const rate = d && d.rates && d.rates[to];
+    if(rate){ _rateCache[key] = rate; return rate; }
+  }catch(e){ console.error('fetchRate', e); }
+  return null;
+}
+function effectiveItemAmount(it){   // 原幣金額（顯示用、換算基底）
   const sharers = (it.sharerIds || []);
   if(it.split && it.split.mode === 'amount'){
     return sharers.reduce((s,id)=> s + (Number(it.split.values?.[id]) || 0), 0);
   }
   return Number(it.amount) || 0;
 }
+function itemBaseAmount(it){ return effectiveItemAmount(it) * (Number(it.rate)||1); }   // 換算成台幣
 function itemsTotal(items){
   return (items || []).reduce((s,it)=>{
-    const amt = effectiveItemAmount(it);
+    const amt = itemBaseAmount(it);
     return s + ((amt>0 && (it.sharerIds||[]).length>0) ? amt : 0);
   }, 0);
 }
@@ -409,11 +434,12 @@ function computeSplit(members, items, adjustments){
   for(const it of items){
     const sharers = (it.sharerIds || []).filter(id => id in owe);
     if(sharers.length === 0) continue;
+    const r = Number(it.rate) || 1;   // 換算成結算幣（台幣）；owe 與 paid 同乘 r，守恆不變
     const mode = (it.split && it.split.mode) || 'equal';
-    const amt = Number(it.amount) || 0;
+    const amt = (Number(it.amount) || 0) * r;
     let itemAmt = 0;
     if(mode === 'amount'){
-      const vals = sharers.map(s => Number(it.split.values?.[s]) || 0);
+      const vals = sharers.map(s => (Number(it.split.values?.[s]) || 0) * r);
       itemAmt = vals.reduce((a,b)=>a+b, 0);
       if(itemAmt <= 0) continue;
       sharers.forEach((s,k)=> owe[s] += vals[k]);
@@ -977,7 +1003,7 @@ function itemListHTML(items){
   sorted.forEach((it, i)=>{
     if(keys[i] !== curKey){
       curKey = keys[i];
-      const dayTotal = sorted.reduce((s,x,j)=> j>=0 && keys[j]===curKey ? s+effectiveItemAmount(x) : s, 0);
+      const dayTotal = sorted.reduce((s,x,j)=> j>=0 && keys[j]===curKey ? s+itemBaseAmount(x) : s, 0);
       html += `<div class="daygroup">${esc(fmtDateHeader(curKey))}<span class="daysum num">${money(dayTotal)}</span></div>`;
     }
     html += itemRowHTML(it);
@@ -1002,7 +1028,7 @@ function itemRowHTML(it){
       <div class="sub">${it.at?`<span style="color:var(--muted)">${esc(fmtAt(it.at))}</span> ・ `:''}<b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 先付 ・ ${esc(who)}${modeTag}</div>
       ${it.note?`<div class="sub" style="color:var(--muted);">📝 ${esc(it.note)}</div>`:''}
     </div>
-    <div class="price num">${money(effectiveItemAmount(it))}</div>
+    <div class="price num">${(it.currency&&it.currency!=='TWD') ? `${esc(origMoney(it))}<span class="basconv">≈ ${money(itemBaseAmount(it))}</span>` : money(effectiveItemAmount(it))}</div>
     <div class="faint">›</div>
   </div>`;
 }
@@ -1220,7 +1246,7 @@ function startAddItem(){
   const lastPayer = current.items.length ? current.items[current.items.length-1].payerId : null;
   const myId = getMe();
   const valid = id => current.members.some(m=>m.id===id);
-  editDraftItem = { id:uid(), name:"", amount:"", at: nowLocal(), note:"",
+  editDraftItem = { id:uid(), name:"", amount:"", at: nowLocal(), note:"", currency:"TWD", rate:1,
                     payerId: (valid(myId) && myId) || lastPayer || current.members[0]?.id || null,
                     sharerIds: current.members.map(m=>m.id),
                     split: { mode:"equal", values:{} }, _isNew:true };
@@ -1258,6 +1284,13 @@ function renderItemForm(){
             </div></label>`
         : `<div class="fld"><span style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px;">金額（各人加總）</span>
             <div class="num" style="font-size:19px;font-weight:700;">${money(amountSum)}</div></div>`}
+      <label class="fld"><span>幣別</span>
+        <select id="itCur">
+          ${CURRENCIES.map(c=>`<option value="${c.code}" ${c.code===(d.currency||'TWD')?'selected':''}>${esc(c.label)} ${esc(c.sym)} · ${c.code}</option>`).join('')}
+        </select></label>
+      ${(d.currency && d.currency!=='TWD') ? `
+      <label class="fld"><span>匯率　1 ${esc(d.currency)} = ? 台幣　<span class="faint" id="ratePreview"></span></span>
+        <input id="itRate" type="number" inputmode="decimal" step="0.0001" placeholder="自動帶入中…" value="${esc(d.rate&&d.rate!==1?d.rate:'')}"></label>` : ''}
       <label class="fld"><span>日期時間</span>
         <input id="itAt" type="datetime-local" value="${esc(d.at||'')}"></label>
       <label class="fld"><span>備註（選填）</span>
@@ -1295,15 +1328,36 @@ function renderItemForm(){
 }
 function syncDraftInputs(){
   // 讓表單輸入即時回寫到 draft（切換 chip 重繪時不丟失）
-  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer"), dt=$("#itAt"), nt=$("#itNote");
+  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer"), dt=$("#itAt"), nt=$("#itNote"), cu=$("#itCur"), rt=$("#itRate");
   if(n) n.oninput = ()=>{ editDraftItem.name = n.value; refreshCatPick(); };
-  if(a) a.oninput = ()=> editDraftItem.amount = a.value;
+  if(a) a.oninput = ()=>{ editDraftItem.amount = a.value; updateRatePreview(); };
   if(p) p.onchange = ()=> editDraftItem.payerId = p.value;
   if(dt) dt.onchange = ()=> editDraftItem.at = dt.value;
   if(nt) nt.oninput = ()=> editDraftItem.note = nt.value;
+  if(cu) cu.onchange = ()=> onCurrencyChange(cu.value);
+  if(rt) rt.oninput = ()=>{ editDraftItem.rate = Number(rt.value)||0; editDraftItem._rateManual = true; updateRatePreview(); };
   document.querySelectorAll('.splitval').forEach(inp=>{
     inp.oninput = ()=>{ editDraftItem.split.values[inp.dataset.mid] = inp.value; };
   });
+  updateRatePreview();
+}
+function updateRatePreview(){
+  const el = $("#ratePreview"); if(!el || !editDraftItem) return;
+  const amount = $("#itAmt") ? (Number($("#itAmt").value)||0) : effectiveItemAmount(editDraftItem);
+  const r = Number(editDraftItem.rate)||0;
+  el.textContent = (r>0 && amount>0) ? `≈ ${money(amount*r)}` : '';
+}
+async function onCurrencyChange(code){
+  if(!editDraftItem) return;
+  editDraftItem.currency = code;
+  if(code==='TWD'){ editDraftItem.rate = 1; editDraftItem._rateManual = false; renderItemForm(); return; }
+  editDraftItem._rateManual = false;
+  renderItemForm();   // 先重畫顯示匯率欄
+  const rate = await fetchRate(code, 'TWD');
+  if(rate && editDraftItem && editDraftItem.currency===code && !editDraftItem._rateManual){
+    editDraftItem.rate = Math.round(rate*10000)/10000;
+    renderItemForm();
+  }
 }
 function setSplitMode(mode){
   const sp = editDraftItem.split || (editDraftItem.split = {mode:"equal", values:{}});
@@ -1339,8 +1393,11 @@ function diffItem(o, n){
   if((o.at||'') !== (n.at||'')) ch.push(`時間 ${fmtAt(o.at)||'—'}→${fmtAt(n.at)||'—'}`);
   if((o.note||'') !== (n.note||'')) ch.push(`備註 ${o.note?`「${o.note}」`:'—'}→${n.note?`「${n.note}」`:'—'}`);
   if((o.cat||'') !== (n.cat||'')) ch.push(`分類 ${catOf(o.cat).label}→${catOf(n.cat).label}`);
+  if((o.currency||'TWD') !== (n.currency||'TWD')) ch.push(`幣別 ${o.currency||'TWD'}→${n.currency||'TWD'}`);
+  else if((Number(o.rate)||1) !== (Number(n.rate)||1)) ch.push(`匯率 ${o.rate||1}→${n.rate||1}`);
   return ch;
 }
+function origMoney(it){ return curSym(it.currency||'TWD') + Math.round(effectiveItemAmount(it)).toLocaleString('en-US'); }
 function saveItem(){
   const d = editDraftItem;
   d.name = ($("#itName").value||"").trim() || "未命名";
@@ -1348,6 +1405,11 @@ function saveItem(){
   d.at = ($("#itAt") && $("#itAt").value) || d.at || nowLocal();
   d.note = ($("#itNote") && $("#itNote").value || "").trim();
   d.cat = d.cat || guessCat(d.name); delete d._catManual;
+  d.currency = ($("#itCur") && $("#itCur").value) || d.currency || 'TWD';
+  if(d.currency==='TWD'){ d.rate = 1; }
+  else { const rv = $("#itRate") ? Number($("#itRate").value) : Number(d.rate); d.rate = (rv && rv>0) ? rv : 0; }
+  if(d.currency!=='TWD' && (!d.rate || d.rate<=0)){ toast("請填這個幣別的匯率（自動帶入失敗可手動輸入）"); return; }
+  delete d._rateManual;
   if(d.sharerIds.length===0){ toast("至少要有一個人分攤"); return; }
   const mode = (d.split && d.split.mode) || 'equal';
   if(mode==='amount'){
@@ -1364,7 +1426,7 @@ function saveItem(){
   const i = current.items.findIndex(x=>x.id===d.id);
   if(isNew || i<0){
     current.items.push(d);
-    logHistory(`新增「${d.name} ${money(d.amount)}」`);
+    logHistory(`新增「${d.name} ${origMoney(d)}」`);
   } else {
     const changes = diffItem(current.items[i], d);
     current.items[i]=d;
