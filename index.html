@@ -607,7 +607,8 @@ function shareInvite(){
   if(!current.shareToken){ toast("聚會還沒建立好"); return; }
   // 用 LIFF 網址 + query，讓對方在 LINE 內開啟並登入；hash 在登入轉址會掉
   const link = `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}`;
-  const txt = `來「欸，算一下！」一起記這餐 👉 ${link}`;
+  const name = current.title || "未命名聚會";
+  const txt = `欸，算一下！— 分帳一鍵算清\n「${name}」邀你一起分帳，點開就能加入 👉\n${link}`;
   if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
     liff.shareTargetPicker([{type:"text", text:txt}]).then(()=>toast("已開啟分享")).catch(()=>toast("分享取消"));
   } else if(navigator.share){
