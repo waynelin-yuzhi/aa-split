@@ -216,6 +216,9 @@
       <input id="pmPay" placeholder="例：國泰 700-1234567 / LINE Pay 連結"></label>
     <div class="faint" style="margin:-2px 2px 14px;">設定後，你建立或加入的聚會會自動帶上，結算時別人看得到、可一鍵複製。</div>
     <button class="btn block" onclick="saveProfile()">儲存</button>
+    <hr class="sep">
+    <button class="btn ghost block" onclick="shareApp()">分享這個 App 給朋友</button>
+    <div class="faint" style="margin:8px 2px 0;">分享純 App 連結，朋友點開用自己的 LINE 登入、各記各的（不是把人加進某場聚會）。</div>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeProfile()">關閉</button>
   </div>
@@ -740,6 +743,17 @@ function shareInvite(){
     navigator.share({title:"欸，算一下！", text:txt}).catch(()=>{});
   } else if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(link).then(()=>toast("已複製邀請連結，貼給朋友")).catch(()=>fallbackCopy(link));
+  } else fallbackCopy(link);
+}
+function shareApp(){   // 分享純 App 入口（沒帶聚會），朋友點開用自己的 LINE 登入、各記各的
+  const link = `https://liff.line.me/${LIFF_ID}`;
+  const txt = `欸，算一下！— 朋友間 AA 分帳的小工具，點開就能用：\n${link}`;
+  if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
+    liff.shareTargetPicker([{type:"text", text:txt}]).then(()=>toast("已開啟分享")).catch(()=>toast("分享取消"));
+  } else if(navigator.share){
+    navigator.share({title:"欸，算一下！", text:txt}).catch(()=>{});
+  } else if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(link).then(()=>toast("已複製 App 連結，貼給朋友")).catch(()=>fallbackCopy(link));
   } else fallbackCopy(link);
 }
 
