@@ -83,12 +83,16 @@
   .listrow .meta .t{font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .listrow .meta .s{font-size:13px; color:var(--muted);}
   .listrow .amt{font-weight:700; color:var(--accent);}
+  .listrow .drag{flex:0 0 auto; display:flex; align-items:center; color:var(--faint); cursor:grab;
+    padding:6px 2px; margin:-6px 0; touch-action:none; user-select:none;}
+  .listrow.dragging{position:fixed; z-index:60; box-shadow:0 12px 30px rgba(0,0,0,.55); opacity:.97; cursor:grabbing;}
+  .drag-ph{border:1px dashed var(--line); border-radius:14px; margin-bottom:10px; background:rgba(125,211,168,.05);}
   .itemrow{display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--line);}
   .itemrow:last-child{border-bottom:0;}
   .itemrow .info{flex:1; min-width:0;}
   .itemrow .info .nm{font-weight:600;}
   .itemrow .info .sub{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .itemrow .price{font-weight:700;}
+  .itemrow .price{font-weight:700; color:#f0726a;}
   /* result card */
   #resultCard{background:linear-gradient(165deg,#13161d,#0e1014); border:1px solid #262b36;
     border-radius:20px; padding:20px; }
@@ -183,10 +187,10 @@
   .mm-add{display:flex; gap:8px;}
   .mm-add input{flex:1 1 auto; min-width:0;}
   .mm-add .btn{flex:0 0 auto; width:auto;}
-  .fab-center{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--accent); color:#0c1410;
-    font-weight:700; font-size:16px; border:0; border-radius:999px; padding:14px 30px; cursor:pointer; z-index:40;
-    box-shadow:0 10px 28px rgba(0,0,0,.45);}
-  .fab-center:active{transform:translateX(-50%) translateY(1px);}
+  .fab-center{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); width:60px; height:60px; border-radius:50%;
+    background:var(--accent); color:#0c1410; font-size:32px; line-height:1; border:0; cursor:pointer; z-index:40;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 10px 28px rgba(0,0,0,.45);}
+  .fab-center:active{transform:translateX(-50%) scale(.95);}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -564,16 +568,76 @@ async function renderList(){
       </div>`;
     return;
   }
-  $("#main").innerHTML = gs.map(g => `
-    <div class="listrow" onclick="openGathering('${g.id}')">
+  const ordered = applySavedOrder(gs);
+  const grip = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="5" cy="4" r="1.3"/><circle cx="11" cy="4" r="1.3"/><circle cx="5" cy="8" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg>`;
+  $("#main").innerHTML = `<div id="listWrap">` + ordered.map(g => `
+    <div class="listrow" data-id="${g.id}" onclick="openGathering('${g.id}')">
+      <div class="drag" aria-label="拖曳排序">${grip}</div>
       <div class="meta">
         <div class="t">${esc(g.title||"未命名聚會")}</div>
         <div class="s">${esc(g.date||"")} ・ ${g.n||0} 人 ・ ${g.count||0} 筆</div>
       </div>
       <div class="amt num">${money(g.total||0)}</div>
       <div class="faint">›</div>
-    </div>`).join("")
-    + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()">＋ 新聚會</button>`;
+    </div>`).join("") + `</div>`
+    + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()" aria-label="新增分帳">＋</button>`;
+  enableListDrag();
+}
+
+/* 首頁清單自訂排序：本機（依 LINE uid）記住順序；有存到的照存的排、沒存的（新的）在前 */
+const orderKey = () => `aa_order_${MY_UID||'x'}`;
+function loadOrder(){ try{ return JSON.parse(localStorage.getItem(orderKey())||"[]"); }catch(e){ return []; } }
+function saveOrder(ids){ try{ localStorage.setItem(orderKey(), JSON.stringify(ids)); }catch(e){} }
+function applySavedOrder(gs){
+  const ord = loadOrder(); if(!ord.length) return gs;
+  const pos = {}; ord.forEach((id,i)=>pos[id]=i);
+  return gs.map((g,i)=>[g,i]).sort((a,b)=>{
+    const pa = a[0].id in pos ? pos[a[0].id] : -1, pb = b[0].id in pos ? pos[b[0].id] : -1;
+    if(pa===-1 && pb===-1) return a[1]-b[1];   // 都沒存：維持原序（updated_at）
+    if(pa===-1) return -1;                     // 新的排前面
+    if(pb===-1) return 1;
+    return pa-pb;
+  }).map(x=>x[0]);
+}
+let _reordered = false;
+function enableListDrag(){
+  const wrap = $("#listWrap"); if(!wrap) return;
+  wrap.querySelectorAll(".drag").forEach(handle=>{
+    handle.addEventListener("pointerdown", e=>{
+      e.preventDefault(); e.stopPropagation();
+      const row = handle.closest(".listrow"); if(!row) return;
+      const rect = row.getBoundingClientRect();
+      const grabDY = e.clientY - rect.top;
+      const ph = document.createElement("div");
+      ph.className = "drag-ph"; ph.style.height = rect.height + "px";
+      row.parentNode.insertBefore(ph, row.nextSibling);
+      row.classList.add("dragging");
+      row.style.width = rect.width + "px"; row.style.left = rect.left + "px"; row.style.top = rect.top + "px";
+      let moved = false;
+      try{ handle.setPointerCapture(e.pointerId); }catch(_){}
+      const onMove = ev=>{
+        moved = true;
+        row.style.top = (ev.clientY - grabDY) + "px";
+        const others = [...wrap.querySelectorAll(".listrow:not(.dragging)")];
+        let target = null;
+        for(const o of others){ const r=o.getBoundingClientRect(); if(ev.clientY < r.top + r.height/2){ target=o; break; } }
+        if(target) wrap.insertBefore(ph, target); else wrap.appendChild(ph);
+      };
+      const onUp = ()=>{
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        ph.parentNode.insertBefore(row, ph); ph.remove();
+        row.classList.remove("dragging");
+        row.style.width = row.style.left = row.style.top = "";
+        if(moved){
+          _reordered = true; setTimeout(()=>{ _reordered=false; }, 350);
+          saveOrder([...wrap.querySelectorAll(".listrow")].map(r=>r.dataset.id));
+        }
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    });
+  });
 }
 
 async function newGathering(){
@@ -587,6 +651,7 @@ async function newGathering(){
   renderEdit(true);
 }
 async function openGathering(id){
+  if(_reordered) return;   // 剛拖完排序，別誤觸開啟
   $("#main").innerHTML = loadingHTML();
   try{ current = await Store.get(id, null); }
   catch(e){ console.error(e); current = null; }
@@ -674,7 +739,7 @@ function itemRowHTML(it){
   return `<div class="itemrow" onclick="startEditItem('${it.id}')">
     <div class="info">
       <div class="nm">${esc(it.name||"未命名")}</div>
-      <div class="sub"><b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 付 ・ ${esc(who)}${modeTag}</div>
+      <div class="sub"><b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 先付 ・ ${esc(who)}${modeTag}</div>
     </div>
     <div class="price num">${money(effectiveItemAmount(it))}</div>
     <div class="faint">›</div>
