@@ -1,4 +1,9 @@
 -- ============================================================
+-- ⚠️ 已淘汰（HISTORICAL）：本檔的四個 capability RPC（create/get/save/delete_gathering）
+--    已於 2026-06-15 DROP（見 migration_drop_old.sql）。線上實際存取一律走身分制
+--    g_* RPC（見 schema_identity.sql + migration_slug.sql + migration_claim.sql）。
+--    本檔保留的是 gatherings 資料表結構與當初的建表/RLS，供參考；勿再重跑下方函式段。
+-- ============================================================
 -- AA 分帳 — Supabase schema（Stage 2a：分享連結協作，尚未接 LINE 登入）
 -- 用法：Supabase Dashboard → SQL Editor → 貼上整段 → Run。
 -- 存取模型：聚會 id 不可猜（uuid）+ share_token = 「知道連結的人」可讀寫（capability）。
