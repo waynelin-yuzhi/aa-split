@@ -98,6 +98,15 @@
   .transfer .arr{color:var(--faint);}
   .transfer .to{color:var(--get); font-weight:650;}
   .transfer .v{margin-left:auto; font-weight:750;}
+  .transfer .paidbtn{margin-left:10px; background:var(--panel2); color:var(--muted); border:1px solid var(--line);
+    border-radius:8px; padding:5px 10px; font-size:12px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
+  .transfer.paid{opacity:.55;}
+  .transfer.paid .v{text-decoration:line-through;}
+  .transfer.paid .paidbtn{background:rgba(125,211,168,.15); color:var(--accent); border-color:rgba(125,211,168,.3);}
+  .payinfo{font-size:12.5px; color:var(--muted); margin:-3px 2px 9px 8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .payinfo .copybtn{background:var(--panel2); color:var(--accent); border:1px solid var(--line); border-radius:7px;
+    padding:3px 10px; font-size:11.5px; cursor:pointer; flex:0 0 auto;}
+  .settle-prog{font-size:12.5px; color:var(--muted); text-align:center; margin-top:10px;}
   .verify{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--accent);
     background:rgba(125,211,168,.1); border:1px solid rgba(125,211,168,.25); border-radius:999px; padding:5px 11px; margin-top:14px;}
   .verify.bad{color:var(--danger); background:rgba(229,119,95,.1); border-color:rgba(229,119,95,.3);}
@@ -449,7 +458,10 @@ function renderEdit(isNew){
       <div class="sect-title" style="margin:0 0 8px;">我是誰？ <span class="faint" style="font-weight:400;">記住後，新項目自動帶我當付款人</span></div>
       <div class="chips">
         ${m.map(p=>`<span class="chip ${p.id===meId?'on':''}" onclick="setMeAndRerender('${p.id}')">${esc(p.name)}</span>`).join("")}
-      </div>` : ''}
+      </div>
+      ${meId ? `<div class="spacer"></div>
+      <label class="fld" style="margin-bottom:0;"><span>我的收款資訊（給人轉帳用，選填）</span>
+        <input id="myPayInfo" placeholder="例：國泰 700-1234567 / LINE Pay 連結" value="${esc((current.members.find(x=>x.id===meId)||{}).payInfo||'')}"></label>` : ''}` : ''}
     </div>
 
     ${CLOUD && current.shareToken ? `<button class="btn ghost block" style="margin-bottom:14px;" onclick="shareInvite()">🔗 邀請朋友一起記（傳連結）</button>` : ''}
@@ -495,6 +507,7 @@ function renderEdit(isNew){
   // 標題/日期即時自動儲存（避免只命名沒加項目就離開、名稱沒存到）
   const gt = $("#gTitle"); if(gt) gt.addEventListener("input", debouncedPersist);
   const gd = $("#gDate");  if(gd) gd.addEventListener("change", ()=>persistCurrent());
+  const pi = $("#myPayInfo"); if(pi) pi.addEventListener("input", ()=>{ const me=current.members.find(x=>x.id===getMe()); if(me){ me.payInfo = pi.value; debouncedPersist(); } });
 }
 let _persistTimer = null;
 function debouncedPersist(){ clearTimeout(_persistTimer); _persistTimer = setTimeout(()=>persistCurrent(), 500); }
@@ -811,14 +824,24 @@ function renderResult(){
     </div>`;
   }).join("");
 
+  const settled = new Set(current.settlements||[]);
+  const paidCount = r.transfers.filter(t=>settled.has(t.from+">"+t.to)).length;
   const transferRows = r.transfers.length===0
     ? `<div class="faint">大家剛好打平，不用轉帳 🎉</div>`
-    : r.transfers.map(t=>`<div class="transfer">
+    : r.transfers.map(t=>{
+        const key = t.from+">"+t.to, paid = settled.has(key);
+        const toM = current.members.find(m=>m.id===t.to);
+        const pay = toM && toM.payInfo && toM.payInfo.trim();
+        return `<div class="transfer ${paid?'paid':''}">
         <span class="from">${esc(r.nameOf[t.from])}</span>
         <span class="arr">→</span>
         <span class="to">${esc(r.nameOf[t.to])}</span>
         <span class="v num">${money(t.amount)}</span>
-      </div>`).join("");
+        <button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">${paid?'✓ 已付':'標記已付'}</button>
+      </div>
+      ${(!paid && pay)?`<div class="payinfo">↳ 轉給 ${esc(r.nameOf[t.to])}：<span class="num">${esc(pay)}</span><button class="copybtn" onclick="copyPay('${t.to}')">複製</button></div>`:''}`;
+      }).join("") +
+      (r.transfers.length>0?`<div class="settle-prog">結清進度 ${paidCount}/${r.transfers.length}${paidCount===r.transfers.length?' ✅ 全部還清！':''}</div>`:'');
 
   const verify = r.allOk
     ? `<div class="verify">✓ 六道驗算全部通過</div>`
@@ -863,8 +886,24 @@ function renderResult(){
   if(!inLineClient){ const b=$("#shareBtn"); b.textContent="系統分享"; }
 }
 
+function toggleSettle(from, to){
+  const key = from+">"+to;
+  current.settlements = current.settlements || [];
+  const i = current.settlements.indexOf(key);
+  if(i>=0) current.settlements.splice(i,1); else current.settlements.push(key);
+  persistCurrent();
+  renderResult();
+}
+function copyPay(memberId){
+  const m = current.members.find(x=>x.id===memberId);
+  const v = m && m.payInfo && m.payInfo.trim();
+  if(!v) return;
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(v).then(()=>toast("已複製收款資訊")).catch(()=>fallbackCopy(v));
+  else fallbackCopy(v);
+}
 function resultText(){
   const r = lastResult;
+  const settled = new Set(current.settlements||[]);
   const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
   let s = `🧾 ${current.title||"欸，算一下！"}（${current.date||""}）\n`;
   if(r.adjustment){
@@ -881,7 +920,12 @@ function resultText(){
   }
   s += `\n💸 最少轉帳\n`;
   if(r.transfers.length===0) s += `・大家剛好打平，免轉帳 🎉\n`;
-  else for(const t of r.transfers) s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}\n`;
+  else for(const t of r.transfers){
+    const paid = settled.has(t.from+">"+t.to);
+    const toM = current.members.find(m=>m.id===t.to);
+    const pay = (!paid && toM && toM.payInfo && toM.payInfo.trim());
+    s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}${paid?" ✅已付":""}${pay?`（收款：${toM.payInfo.trim()}）`:""}\n`;
+  }
   if(r.allOk) s += `\n✅ 已驗算`;
   return s;
 }
