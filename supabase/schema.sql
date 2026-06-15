@@ -34,6 +34,10 @@ create trigger trg_gatherings_touch before update on gatherings
 -- RLS 全鎖：直接查表一律拒絕，只能透過下方 SECURITY DEFINER RPC 存取
 alter table gatherings enable row level security;
 
+-- 縱深防禦：撤掉資料表本身的權限，連 Supabase 自動產生的 REST API 都查不到這張表，
+-- 只剩下方 RPC（SECURITY DEFINER、需正確 id+token）這一條存取路徑。
+revoke all on table gatherings from anon, authenticated;
+
 -- 建立聚會：回傳 id + share_token（呼叫端存進本機索引，當「我的聚會」清單）
 create or replace function create_gathering(p_title text, p_event_date date, p_currency text)
 returns gatherings language plpgsql security definer set search_path = public as $$
