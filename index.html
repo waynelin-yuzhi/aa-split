@@ -893,8 +893,12 @@ $("#addGatheringBtn").addEventListener("click", newGathering);
  * ========================================================================= */
 function showLoginError(msg){
   $("#backBtn").classList.add("hidden"); $("#addGatheringBtn").classList.add("hidden");
-  $("#main").innerHTML = `<div class="empty"><div class="big">🔒</div><div>${esc(msg)}</div>
-    <div class="faint" style="margin-top:8px;">請用 LINE 開啟：<br>liff.line.me/${LIFF_ID}</div></div>`;
+  const url = "https://liff.line.me/" + LIFF_ID;
+  $("#main").innerHTML = `<div class="empty"><div class="big">💬</div>
+    <div>${esc(msg)}</div>
+    <div class="spacer"></div><div class="spacer"></div>
+    <a class="btn" href="${url}" style="text-decoration:none;">在 LINE 開啟</a>
+    <div class="faint" style="margin-top:12px;word-break:break-all;">或複製這條連結到 LINE 點開：<br>${url}</div></div>`;
 }
 let _invite = null;
 function showJoinPrompt(g, token){
@@ -934,7 +938,8 @@ async function boot(){
     if(typeof liff==="undefined" || !LIFF_ID){ showLoginError("這個 app 需要在 LINE 內開啟"); return; }
     await liff.init({ liffId: LIFF_ID });
     inLineClient = liff.isInClient();
-    if(!liff.isLoggedIn()){ liff.login(); return; }   // 導向 LINE 登入後返回
+    if(!inLineClient){ showLoginError("「欸，算一下！」請在 LINE 內開啟使用"); return; }   // 只限 LINE 內
+    if(!liff.isLoggedIn()){ liff.login(); return; }   // LINE 內若未登入，導向登入後返回
     liffReady = true;
     const prof = await liff.getProfile();
     MY_UID = prof.userId; MY_NAME = prof.displayName || "我";
