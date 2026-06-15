@@ -484,12 +484,21 @@ function renderEdit(isNew){
 
     <button class="btn block" onclick="goResult()" ${canCompute?'':'disabled style="opacity:.45"'}>算分帳 →</button>
     <div class="spacer"></div>
+    <button class="btn ghost block" onclick="finishEdit()">✓ 完成，回我的聚會</button>
+    <div class="spacer"></div>
     <button class="btn danger block" onclick="deleteGathering()">刪除這場聚會</button>
+    <div class="faint" style="text-align:center;margin-top:10px;">編輯內容會自動儲存到雲端</div>
   `;
 
   const mi = $("#memberInput");
-  mi.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); addMember(); }});
+  if(mi) mi.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); addMember(); }});
+  // 標題/日期即時自動儲存（避免只命名沒加項目就離開、名稱沒存到）
+  const gt = $("#gTitle"); if(gt) gt.addEventListener("input", debouncedPersist);
+  const gd = $("#gDate");  if(gd) gd.addEventListener("change", ()=>persistCurrent());
 }
+let _persistTimer = null;
+function debouncedPersist(){ clearTimeout(_persistTimer); _persistTimer = setTimeout(()=>persistCurrent(), 500); }
+function finishEdit(){ persistCurrent(); toast("已儲存"); renderList(); }
 
 function itemRowHTML(it){
   const sn = (it.sharerIds||[]).length;
@@ -907,7 +916,7 @@ function shareToLine(){
  * ========================================================================= */
 $("#backBtn").addEventListener("click", ()=>{
   if(view==="result") renderEdit(false);
-  else if(view==="edit"){ if(editDraftItem||editDraftAdj){ editDraftItem=null; editDraftAdj=null; renderEdit(false); } else renderList(); }
+  else if(view==="edit"){ if(editDraftItem||editDraftAdj){ editDraftItem=null; editDraftAdj=null; renderEdit(false); } else { persistCurrent(); renderList(); } }
   else renderList();
 });
 $("#addGatheringBtn").addEventListener("click", newGathering);
