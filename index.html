@@ -76,6 +76,20 @@
   .histrow .ht{flex:0 0 auto; color:var(--muted); width:80px;}
   .histrow .hb{flex:1; min-width:0; color:var(--ink);}
   .histrow .hb b{color:var(--accent); font-weight:650;}
+  .amt-row{display:flex; gap:8px; align-items:stretch;}
+  .amt-row input{flex:1; min-width:0;}
+  .calc-btn{flex:0 0 auto; width:50px; background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--accent);}
+  .calc-btn svg{width:22px; height:22px;}
+  .calc-card{max-width:320px;}
+  .calc-disp{background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:12px; text-align:right;}
+  .calc-expr{font-size:22px; font-weight:700; word-break:break-all; min-height:28px;}
+  .calc-res{font-size:13px; color:var(--muted); margin-top:2px;}
+  .calc-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
+  .ck{padding:14px 0; font-size:18px; font-weight:600; border-radius:12px; border:1px solid var(--line); background:var(--panel2); color:var(--ink); cursor:pointer;}
+  .ck-op{color:var(--accent);} .ck-fn{color:var(--muted); font-size:16px;}
+  .ck-eq{background:var(--accent); color:#0c1410; border-color:var(--accent);}
+  .ck:active{transform:translateY(1px);}
   .chip .x{color:var(--faint); font-weight:700;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
   .empty{text-align:center; color:var(--muted); padding:48px 20px;}
@@ -127,6 +141,7 @@
   .transfer .confirmbtn{background:var(--panel2); color:var(--accent); border:1px solid rgba(125,211,168,.45);
     border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; flex:0 0 auto; white-space:nowrap;}
   .transfer .confirmbtn.me{background:var(--accent); color:#0c1410; border-color:var(--accent); font-weight:700;}
+  .transfer .waithint{flex:0 0 auto; font-size:11.5px; color:var(--faint); white-space:nowrap; padding:5px 4px;}
   .transfer.paid{opacity:.55;}
   .transfer.paid .v{text-decoration:line-through;}
   .transfer.paid .paidbtn{background:rgba(125,211,168,.15); color:var(--accent); border-color:rgba(125,211,168,.3);}
@@ -258,6 +273,38 @@
     <div id="histList" style="max-height:60vh;overflow:auto;"></div>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeHistory()">關閉</button>
+  </div>
+</div>
+
+<div id="calcModal" class="modal hidden">
+  <div class="modal-card calc-card">
+    <div class="calc-disp"><div id="calcExpr" class="calc-expr">0</div><div id="calcResult" class="calc-res">= 0</div></div>
+    <div class="calc-grid">
+      <button class="ck ck-fn" onclick="calcKey('C')">C</button>
+      <button class="ck ck-fn" onclick="calcKey('(')">(</button>
+      <button class="ck ck-fn" onclick="calcKey(')')">)</button>
+      <button class="ck ck-op" onclick="calcKey('÷')">÷</button>
+      <button class="ck" onclick="calcKey('7')">7</button>
+      <button class="ck" onclick="calcKey('8')">8</button>
+      <button class="ck" onclick="calcKey('9')">9</button>
+      <button class="ck ck-op" onclick="calcKey('×')">×</button>
+      <button class="ck" onclick="calcKey('4')">4</button>
+      <button class="ck" onclick="calcKey('5')">5</button>
+      <button class="ck" onclick="calcKey('6')">6</button>
+      <button class="ck ck-op" onclick="calcKey('-')">−</button>
+      <button class="ck" onclick="calcKey('1')">1</button>
+      <button class="ck" onclick="calcKey('2')">2</button>
+      <button class="ck" onclick="calcKey('3')">3</button>
+      <button class="ck ck-op" onclick="calcKey('+')">＋</button>
+      <button class="ck" onclick="calcKey('0')">0</button>
+      <button class="ck" onclick="calcKey('.')">.</button>
+      <button class="ck ck-fn" onclick="calcKey('back')">⌫</button>
+      <button class="ck ck-eq" onclick="calcKey('=')">=</button>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn ghost" onclick="closeCalc()">取消</button>
+      <button class="btn" onclick="calcApply()">填入金額</button>
+    </div>
   </div>
 </div>
 
@@ -773,6 +820,7 @@ function itemRowHTML(it){
     <div class="info">
       <div class="nm">${esc(it.name||"未命名")}</div>
       <div class="sub">${it.at?`<span style="color:var(--muted)">${esc(fmtAt(it.at))}</span> ・ `:''}<b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 先付 ・ ${esc(who)}${modeTag}</div>
+      ${it.note?`<div class="sub" style="color:var(--muted);">📝 ${esc(it.note)}</div>`:''}
     </div>
     <div class="price num">${money(effectiveItemAmount(it))}</div>
     <div class="faint">›</div>
@@ -912,6 +960,39 @@ function refreshMembersUI(){
   if(view==="edit") renderEdit(false);
   if(!$("#membersModal").classList.contains("hidden")) renderMembersModal();
 }
+/* 金額簡易計算機 */
+let _calc = "";
+function openCalc(){
+  _calc = ($("#itAmt") && $("#itAmt").value) || (editDraftItem && editDraftItem.amount!=null ? String(editDraftItem.amount) : "") || "";
+  renderCalc();
+  $("#calcModal").classList.remove("hidden");
+}
+function closeCalc(){ $("#calcModal").classList.add("hidden"); }
+function calcKey(k){
+  if(k==='C') _calc="";
+  else if(k==='back') _calc=_calc.slice(0,-1);
+  else if(k==='=') _calc=String(calcEval(_calc));
+  else _calc += k;
+  renderCalc();
+}
+function calcEval(expr){
+  try{
+    const s = String(expr).replace(/×/g,'*').replace(/÷/g,'/');
+    if(s.trim()==='' || !/^[0-9+\-*/.() ]*$/.test(s)) return 0;
+    const v = Function('"use strict";return ('+s+')')();
+    return (typeof v==='number' && isFinite(v)) ? Math.round(v*100)/100 : 0;
+  }catch(e){ return 0; }
+}
+function renderCalc(){
+  $("#calcExpr").textContent = _calc || "0";
+  $("#calcResult").textContent = "= " + calcEval(_calc);
+}
+function calcApply(){
+  const v = calcEval(_calc);
+  if(editDraftItem) editDraftItem.amount = v;
+  const a=$("#itAmt"); if(a) a.value = v;
+  closeCalc();
+}
 /* 編輯歷史懸浮視窗 */
 function openHistory(){ renderHistory(); $("#historyModal").classList.remove("hidden"); }
 function closeHistory(){ $("#historyModal").classList.add("hidden"); }
@@ -934,7 +1015,7 @@ function startAddItem(){
   const lastPayer = current.items.length ? current.items[current.items.length-1].payerId : null;
   const myId = getMe();
   const valid = id => current.members.some(m=>m.id===id);
-  editDraftItem = { id:uid(), name:"", amount:"", at: nowLocal(),
+  editDraftItem = { id:uid(), name:"", amount:"", at: nowLocal(), note:"",
                     payerId: (valid(myId) && myId) || lastPayer || current.members[0]?.id || null,
                     sharerIds: current.members.map(m=>m.id),
                     split: { mode:"equal", values:{} }, _isNew:true };
@@ -961,11 +1042,16 @@ function renderItemForm(){
         <input id="itName" placeholder="例如：海鮮鍋、啤酒、Uber" value="${esc(d.name)}"></label>
       ${mode!=='amount'
         ? `<label class="fld"><span>金額</span>
-            <input id="itAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>`
+            <div class="amt-row">
+              <input id="itAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}">
+              <button type="button" class="calc-btn" onclick="openCalc()" aria-label="計算機">${ICONS.calc}</button>
+            </div></label>`
         : `<div class="fld"><span style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px;">金額（各人加總）</span>
             <div class="num" style="font-size:19px;font-weight:700;">${money(amountSum)}</div></div>`}
       <label class="fld"><span>日期時間</span>
         <input id="itAt" type="datetime-local" value="${esc(d.at||'')}"></label>
+      <label class="fld"><span>備註（選填）</span>
+        <input id="itNote" placeholder="例如：含小費、阿宏先墊" value="${esc(d.note||'')}"></label>
       <label class="fld"><span>誰付的錢</span>
         <select id="itPayer">
           ${m.map(p=>`<option value="${p.id}" ${p.id===d.payerId?"selected":""}>${esc(p.name)}</option>`).join("")}
@@ -999,11 +1085,12 @@ function renderItemForm(){
 }
 function syncDraftInputs(){
   // 讓表單輸入即時回寫到 draft（切換 chip 重繪時不丟失）
-  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer"), dt=$("#itAt");
+  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer"), dt=$("#itAt"), nt=$("#itNote");
   if(n) n.oninput = ()=> editDraftItem.name = n.value;
   if(a) a.oninput = ()=> editDraftItem.amount = a.value;
   if(p) p.onchange = ()=> editDraftItem.payerId = p.value;
   if(dt) dt.onchange = ()=> editDraftItem.at = dt.value;
+  if(nt) nt.oninput = ()=> editDraftItem.note = nt.value;
   document.querySelectorAll('.splitval').forEach(inp=>{
     inp.oninput = ()=>{ editDraftItem.split.values[inp.dataset.mid] = inp.value; };
   });
@@ -1030,6 +1117,7 @@ function saveItem(){
   d.name = ($("#itName").value||"").trim() || "未命名";
   d.payerId = $("#itPayer").value;
   d.at = ($("#itAt") && $("#itAt").value) || d.at || nowLocal();
+  d.note = ($("#itNote") && $("#itNote").value || "").trim();
   if(d.sharerIds.length===0){ toast("至少要有一個人分攤"); return; }
   const mode = (d.split && d.split.mode) || 'equal';
   if(mode==='amount'){
@@ -1180,19 +1268,35 @@ function renderResult(){
     ? `<div class="faint">大家剛好打平，不用轉帳 🎉</div>`
     : r.transfers.map(t=>{
         const st = stOf(t);
+        const fromM = current.members.find(m=>m.id===t.from);
         const toM = current.members.find(m=>m.id===t.to);
         const pay = toM && toM.payInfo && toM.payInfo.trim();
+        const iAmPayer = MY_UID && fromM && fromM.uid===MY_UID;
         const iAmPayee = MY_UID && toM && toM.uid===MY_UID;
+        // 只有本人能動：付款人才能「標記已付」、收款人才能「確認收到」；
+        // 若該成員是未綁 LINE 的預設名字（本人不在 app），則任一成員可代記
+        const canMarkPaid = iAmPayer || (fromM && !fromM.uid);
+        const canConfirm  = iAmPayee || (toM && !toM.uid);
         const stateCls = st.confirmed ? 'paid' : (st.paid ? 'pending' : '');
-        // 主按鈕：未付→標記已付；已付待確認→確認收到（我是收款人就高亮）；已確認→已收到
+        const copyBtn = pay ? `<button class="copyacct" onclick="copyPay('${t.to}')">複製帳號</button>` : '';
         let topBtn;
-        if(!st.paid) topBtn = `${pay?`<button class="copyacct" onclick="copyPay('${t.to}')">複製帳號</button>`:''}<button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">標記已付</button>`;
-        else if(!st.confirmed) topBtn = `<button class="confirmbtn ${iAmPayee?'me':''}" onclick="toggleConfirm('${t.from}','${t.to}')">確認收到</button>`;
-        else topBtn = `<button class="paidbtn" onclick="toggleConfirm('${t.from}','${t.to}')">✓ 已收到</button>`;
-        // 子行：未付→收款帳號；已付待確認→等對方確認 + 提醒/改未付
+        if(!st.paid){
+          topBtn = copyBtn + (canMarkPaid
+            ? `<button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">標記已付</button>`
+            : `<span class="waithint">待 ${esc(r.nameOf[t.from])} 標記</span>`);
+        } else if(!st.confirmed){
+          topBtn = canConfirm
+            ? `<button class="confirmbtn ${iAmPayee?'me':''}" onclick="toggleConfirm('${t.from}','${t.to}')">確認收到</button>`
+            : `<span class="waithint">待 ${esc(r.nameOf[t.to])} 確認</span>`;
+        } else {
+          topBtn = canConfirm
+            ? `<button class="paidbtn" onclick="toggleConfirm('${t.from}','${t.to}')">✓ 已收到</button>`
+            : `<span class="waithint">✓ 已收到</span>`;
+        }
+        // 子行：未付→收款帳號；已付待確認→等對方確認 + 提醒/（付款人可）改未付
         let sub = '';
         if(!st.paid && pay) sub = `<div class="payinfo">↳ 轉給 ${esc(r.nameOf[t.to])}：<span class="num">${esc(pay)}</span></div>`;
-        else if(st.paid && !st.confirmed) sub = `<div class="payinfo">⏳ 已標記付款，等 ${esc(r.nameOf[t.to])} 確認收到<button class="remindbtn" onclick="remindReceipt('${t.from}','${t.to}',${t.amount})">🔔 提醒對方</button><button class="undobtn" onclick="toggleSettle('${t.from}','${t.to}')">改未付</button></div>`;
+        else if(st.paid && !st.confirmed) sub = `<div class="payinfo">⏳ 已標記付款，等 ${esc(r.nameOf[t.to])} 確認收到<button class="remindbtn" onclick="remindReceipt('${t.from}','${t.to}',${t.amount})">🔔 提醒對方</button>${canMarkPaid?`<button class="undobtn" onclick="toggleSettle('${t.from}','${t.to}')">改未付</button>`:''}</div>`;
         return `<div class="transfer ${stateCls}">
         <span class="from">${esc(r.nameOf[t.from])}</span>
         <span class="arr">→</span>
