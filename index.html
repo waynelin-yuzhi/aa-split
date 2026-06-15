@@ -134,20 +134,11 @@ const LIFF_ID = ""; // 例如 "2000000000-xxxxxxxx"
  *   淨值法（已付 − 應付）→ 最少轉帳配對 → 六道驗算
  *   差異：零頭採整數淨值法（殘差由最大收款人吸收），轉帳保證對帳歸零。
  * ========================================================================= */
-// 付款層：把 payments 換算成有效金額。isFull = 一人付全額，金額自動 = 消費總額
-function effectivePayments(payments, total){
-  const full = (payments || []).find(p => p.isFull);
-  if(full) return [{payerId: full.payerId, amount: total}];
-  return (payments || []).map(p => ({payerId: p.payerId, amount: Number(p.amount) || 0}));
-}
 function itemsTotal(items){
   return (items || []).reduce((s,it)=>{
     const amt = Number(it.amount)||0;
     return s + ((amt>0 && (it.sharerIds||[]).length>0) ? amt : 0);
   }, 0);
-}
-function paymentsTotal(payments, total){
-  return effectivePayments(payments, total).reduce((s,p)=>s+p.amount, 0);
 }
 // 整單調整層：服務費/折扣，按消費比例分攤。sign +1 加價 / -1 折扣
 function adjustTotal(subtotal, adjustments){
@@ -161,7 +152,7 @@ function grandTotal(items, adjustments){
   return sub + adjustTotal(sub, adjustments);
 }
 
-function computeSplit(members, items, payments, adjustments){
+function computeSplit(members, items, adjustments){
   const ids = members.map(m => m.id);
   const nameOf = Object.fromEntries(members.map(m => [m.id, m.name]));
 
@@ -169,7 +160,7 @@ function computeSplit(members, items, payments, adjustments){
   const paid = Object.fromEntries(ids.map(id => [id, 0]));
   let total = 0;
 
-  // 分攤層：每筆項目各自的分攤名單決定 owe
+  // 每筆支出：分攤名單決定 owe、付款人決定 paid
   for(const it of items){
     const amt = Number(it.amount) || 0;
     const sharers = (it.sharerIds || []).filter(id => id in owe);
@@ -177,20 +168,16 @@ function computeSplit(members, items, payments, adjustments){
     total += amt;
     const per = amt / sharers.length;
     for(const s of sharers) owe[s] += per;
+    if(it.payerId && it.payerId in paid) paid[it.payerId] += amt;
   }
 
-  // 整單調整層：服務費/折扣按每人消費比例分攤
+  // 整單調整層：服務費/折扣按比例分攤——應付與已付兩側同步 scale，保持守恆
   const subtotal = total;
   const adjustment = adjustTotal(subtotal, adjustments);
   total = subtotal + adjustment;
   if(subtotal > 0 && adjustment !== 0){
     const scale = total / subtotal;
-    for(const id of ids) owe[id] *= scale;
-  }
-
-  // 付款層（與分攤層脫鉤）：誰先出錢（金額對應調整後總額）
-  for(const p of effectivePayments(payments, total)){
-    if(p.payerId in paid) paid[p.payerId] += p.amount;
+    for(const id of ids){ owe[id] *= scale; paid[id] *= scale; }
   }
 
   // 淨值 = 已付 − 應付
@@ -253,15 +240,15 @@ const Store = {
   get(id){ return this._migrate(this._all().find(g=>g.id===id) || null); },
   _migrate(g){
     if(!g) return g;
-    if(!Array.isArray(g.payments)){
-      // 舊資料：付款人原本掛在每筆項目，轉成獨立付款層
-      g.payments = [];
-      const sums = {};
-      (g.items||[]).forEach(it=>{ if(it.payerId){ sums[it.payerId] = (sums[it.payerId]||0) + (Number(it.amount)||0); } });
-      for(const pid in sums) g.payments.push({id:uid(), payerId:pid, amount:sums[pid]});
-    }
     if(!Array.isArray(g.adjustments)) g.adjustments = [];
-    (g.items||[]).forEach(it=>{ delete it.payerId; });
+    // 舊版有獨立 payments 層 → 收斂回每筆項目的付款人
+    if(Array.isArray(g.payments)){
+      const full = g.payments.find(p=>p.isFull);
+      const fallback = full ? full.payerId
+        : (g.payments.slice().sort((a,b)=>(b.amount||0)-(a.amount||0))[0]?.payerId || null);
+      (g.items||[]).forEach(it=>{ if(!it.payerId) it.payerId = fallback || g.members?.[0]?.id || null; });
+      delete g.payments;
+    }
     return g;
   },
   upsert(g){
@@ -288,7 +275,6 @@ let liffReady = false, inLineClient = false;
 let view = "list";          // list | edit | result
 let current = null;         // 編輯中的聚會
 let editDraftItem = null;   // 正在新增/編輯的項目
-let editDraftPayment = null; // 正在新增/編輯的付款
 let editDraftAdj = null;     // 正在新增/編輯的服務費/折扣
 
 function toast(msg){
@@ -333,7 +319,7 @@ function renderList(){
 }
 
 function newGathering(){
-  current = { id:uid(), title:"", date:todayStr(), members:[], items:[], payments:[], adjustments:[] };
+  current = { id:uid(), title:"", date:todayStr(), members:[], items:[], adjustments:[] };
   renderEdit(true);
 }
 function openGathering(id){
@@ -352,14 +338,10 @@ function renderEdit(isNew){
   $("#addGatheringBtn").classList.add("hidden");
 
   const m = current.members, items = current.items;
-  const pays = current.payments || (current.payments = []);
   const adjs = current.adjustments || (current.adjustments = []);
   const sub = itemsTotal(items);
   const tot = grandTotal(items, adjs);
-  const hasFull = pays.some(p=>p.isFull);
-  const payTot = paymentsTotal(pays, tot);
-  const matched = hasFull ? tot>0 : Math.abs(tot - payTot) < 0.5;
-  const canCompute = items.length>0 && pays.length>0 && matched && tot>0;
+  const canCompute = items.length>0 && tot>0;
   $("#main").innerHTML = `
     <div class="card">
       <label class="fld">
@@ -387,7 +369,7 @@ function renderEdit(isNew){
 
     <div class="card">
       <div class="sect-title">消費項目（${items.length}）</div>
-      <div class="hint">每筆只填「品名、金額、誰分攤」。單點就只勾一個人。</div>
+      <div class="hint">每筆填「品名、金額、誰付的、誰分攤」。單點就只勾一個人。</div>
       <div id="itemList">
         ${items.length===0 ? '<div class="faint" style="padding:6px 2px;">還沒有項目。</div>' :
           items.map(it=>itemRowHTML(it)).join("")}
@@ -413,21 +395,6 @@ function renderEdit(isNew){
       ${adjs.length>0 ? `<div class="recon" style="margin-top:12px;color:var(--muted);background:var(--panel2);">小計 ${money(sub)}　→　調整後總額 ${money(tot)}</div>` : ''}
     </div>
 
-    <div class="card">
-      <div class="sect-title">誰先付的錢（${pays.length}）</div>
-      <div class="hint">跟「誰分攤」分開：這裡只記實際掏錢的人。一人付全額或多人各墊都行。</div>
-      <div id="payList">
-        ${pays.length===0 ? '<div class="faint" style="padding:6px 2px;">還沒有付款人。</div>' :
-          pays.map(p=>payRowHTML(p, tot)).join("")}
-      </div>
-      <div class="spacer"></div>
-      <div class="row">
-        <button class="btn ghost" onclick="quickFullPayment()" ${m.length===0?'disabled style="opacity:.45"':''}>一人付全額</button>
-        <button class="btn ghost" onclick="startAddPayment()" ${m.length===0?'disabled style="opacity:.45"':''}>＋ 逐筆付款</button>
-      </div>
-      ${items.length>0 && pays.length>0 ? `<div class="recon ${matched?'ok':'bad'}">${matched?'✓':'⚠'} 付款合計 ${money(payTot)} ／ 消費總額 ${money(tot)}${matched?'':`（差 ${money(Math.abs(tot-payTot))}）`}</div>` : ''}
-    </div>
-
     <button class="btn block" onclick="goResult()" ${canCompute?'':'disabled style="opacity:.45"'}>算分帳 →</button>
     <div class="spacer"></div>
     <button class="btn danger block" onclick="deleteGathering()">刪除這場聚會</button>
@@ -445,23 +412,13 @@ function itemRowHTML(it){
   else if(sn===allN) who = "全員均分";
   else if(sn<=3) who = current.members.filter(x=>it.sharerIds.includes(x.id)).map(x=>x.name).join("、") + " 均分";
   else who = `${sn} 人分`;
+  const payer = current.members.find(x=>x.id===it.payerId);
   return `<div class="itemrow" onclick="startEditItem('${it.id}')">
     <div class="info">
       <div class="nm">${esc(it.name||"未命名")}</div>
-      <div class="sub">${esc(who)}</div>
+      <div class="sub"><b style="color:var(--get)">${payer?esc(payer.name):"?"}</b> 付 ・ ${esc(who)}</div>
     </div>
     <div class="price num">${money(it.amount)}</div>
-    <div class="faint">›</div>
-  </div>`;
-}
-function payRowHTML(p, tot){
-  const person = current.members.find(x=>x.id===p.payerId);
-  return `<div class="itemrow" onclick="startEditPayment('${p.id}')">
-    <div class="info">
-      <div class="nm">${person?esc(person.name):"?"}</div>
-      <div class="sub">${p.isFull?"付了全額":"代墊"}</div>
-    </div>
-    <div class="price num">${p.isFull?"全額 "+money(tot):money(p.amount)}</div>
     <div class="faint">›</div>
   </div>`;
 }
@@ -500,7 +457,10 @@ function deleteGathering(){
 
 /* ---- 新增 / 編輯項目（簡易表單覆蓋在 list 上方） ---- */
 function startAddItem(){
+  // 付款人沿用上一筆（一人付全額時設一次就好），否則預設第一位成員
+  const lastPayer = current.items.length ? current.items[current.items.length-1].payerId : null;
   editDraftItem = { id:uid(), name:"", amount:"",
+                    payerId: lastPayer || current.members[0]?.id || null,
                     sharerIds: current.members.map(m=>m.id), _isNew:true };
   renderItemForm();
 }
@@ -520,6 +480,10 @@ function renderItemForm(){
         <input id="itName" placeholder="例如：海鮮鍋、啤酒、Uber" value="${esc(d.name)}"></label>
       <label class="fld"><span>金額</span>
         <input id="itAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>
+      <label class="fld"><span>誰付的錢</span>
+        <select id="itPayer">
+          ${m.map(p=>`<option value="${p.id}" ${p.id===d.payerId?"selected":""}>${esc(p.name)}</option>`).join("")}
+        </select></label>
       <div class="sect-title" style="margin-top:4px;">誰分攤這筆</div>
       <div class="hint">點名字切換；預設全員均分</div>
       <div class="chips">
@@ -537,9 +501,10 @@ function renderItemForm(){
 }
 function syncDraftInputs(){
   // 讓表單輸入即時回寫到 draft（切換 chip 重繪時不丟失）
-  const n=$("#itName"), a=$("#itAmt");
+  const n=$("#itName"), a=$("#itAmt"), p=$("#itPayer");
   if(n) n.oninput = ()=> editDraftItem.name = n.value;
   if(a) a.oninput = ()=> editDraftItem.amount = a.value;
+  if(p) p.onchange = ()=> editDraftItem.payerId = p.value;
 }
 function toggleSharer(id){
   const arr = editDraftItem.sharerIds;
@@ -556,6 +521,7 @@ function saveItem(){
   const d = editDraftItem;
   d.name = ($("#itName").value||"").trim() || "未命名";
   d.amount = Number($("#itAmt").value)||0;
+  d.payerId = $("#itPayer").value;
   if(d.amount<=0){ toast("金額要大於 0"); return; }
   if(d.sharerIds.length===0){ toast("至少要有一個人分攤"); return; }
   const isNew = d._isNew; delete d._isNew;
@@ -572,69 +538,7 @@ function deleteItem(){
   renderEdit(false);
 }
 
-/* ---- 付款層：誰先出錢 ---- */
-function quickFullPayment(){
-  editDraftPayment = {id:uid(), payerId: current.members[0]?.id||null, amount:"", isFull:true, _isNew:true};
-  renderPaymentForm();
-}
-function startAddPayment(){
-  editDraftPayment = {id:uid(), payerId: current.members[0]?.id||null, amount:"", isFull:false, _isNew:true};
-  renderPaymentForm();
-}
-function startEditPayment(id){
-  const p = (current.payments||[]).find(x=>x.id===id);
-  if(!p) return;
-  editDraftPayment = JSON.parse(JSON.stringify(p));
-  renderPaymentForm();
-}
-function renderPaymentForm(){
-  const d = editDraftPayment, m = current.members;
-  const tot = itemsTotal(current.items);
-  $("#main").innerHTML = `
-    <div class="card">
-      <div class="sect-title">${d._isNew?(d.isFull?"一人付全額":"新增付款"):"編輯付款"}</div>
-      <label class="fld" style="margin-bottom:${d.isFull?'0':'12px'};"><span>誰付的</span>
-        <select id="payPerson">
-          ${m.map(p=>`<option value="${p.id}" ${p.id===d.payerId?"selected":""}>${esc(p.name)}</option>`).join("")}
-        </select></label>
-      ${d.isFull
-        ? `<div class="hint" style="margin-top:10px;margin-bottom:0;">金額自動 = 消費總額 ${money(tot)}，之後改項目會跟著變。</div>`
-        : `<label class="fld" style="margin-bottom:0;"><span>付了多少</span>
-            <input id="payAmt" type="number" inputmode="decimal" placeholder="0" value="${esc(d.amount)}"></label>`}
-    </div>
-    <div class="row">
-      <button class="btn ghost" onclick="cancelDraft()">取消</button>
-      <button class="btn" onclick="savePayment()">儲存</button>
-    </div>
-    ${d._isNew?'':'<div class="spacer"></div><button class="btn danger block" onclick="deletePayment()">刪除這筆付款</button>'}
-  `;
-  const ps=$("#payPerson"); if(ps) ps.onchange=()=>editDraftPayment.payerId=ps.value;
-  const pa=$("#payAmt"); if(pa) pa.oninput=()=>editDraftPayment.amount=pa.value;
-}
-function savePayment(){
-  const d = editDraftPayment;
-  d.payerId = $("#payPerson").value;
-  if(d.isFull){
-    current.payments = [{id:d.id, payerId:d.payerId, isFull:true}]; // 全額涵蓋整桌，取代其他付款
-  } else {
-    d.amount = Number($("#payAmt").value)||0;
-    if(d.amount<=0){ toast("金額要大於 0"); return; }
-    current.payments = (current.payments||[]).filter(x=>!x.isFull); // 逐筆與全額互斥
-    const np = {id:d.id, payerId:d.payerId, amount:d.amount};
-    const i = current.payments.findIndex(x=>x.id===d.id);
-    if(i>=0) current.payments[i]=np; else current.payments.push(np);
-  }
-  editDraftPayment=null;
-  persistCurrent();
-  renderEdit(false);
-}
-function deletePayment(){
-  current.payments = (current.payments||[]).filter(x=>x.id!==editDraftPayment.id);
-  editDraftPayment=null;
-  persistCurrent();
-  renderEdit(false);
-}
-function cancelDraft(){ editDraftItem=null; editDraftPayment=null; editDraftAdj=null; renderEdit(false); }
+function cancelDraft(){ editDraftItem=null; editDraftAdj=null; renderEdit(false); }
 
 /* ---- 整單調整層：服務費 / 折扣 ---- */
 function adjRowHTML(a, sub){
@@ -715,12 +619,7 @@ function deleteAdj(){
 let lastResult = null;
 function goResult(){
   persistCurrent();
-  const tot = grandTotal(current.items, current.adjustments);
-  const pays = current.payments || [];
-  if(pays.length===0){ toast("先設定誰先付的錢"); return; }
-  if(!pays.some(p=>p.isFull) && Math.abs(tot - paymentsTotal(pays, tot)) >= 0.5){
-    toast("付款合計跟消費總額對不上"); return;
-  }
+  if((current.items||[]).length===0){ toast("先新增消費項目"); return; }
   renderResult();
 }
 function renderResult(){
@@ -729,7 +628,7 @@ function renderResult(){
   $("#backBtn").classList.remove("hidden");
   $("#addGatheringBtn").classList.add("hidden");
 
-  const r = computeSplit(current.members, current.items, current.payments, current.adjustments);
+  const r = computeSplit(current.members, current.items, current.adjustments);
   lastResult = r;
   const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
 
@@ -849,7 +748,7 @@ function shareToLine(){
  * ========================================================================= */
 $("#backBtn").addEventListener("click", ()=>{
   if(view==="result") renderEdit(false);
-  else if(view==="edit"){ if(editDraftItem||editDraftPayment||editDraftAdj){ editDraftItem=null; editDraftPayment=null; editDraftAdj=null; renderEdit(false); } else renderList(); }
+  else if(view==="edit"){ if(editDraftItem||editDraftAdj){ editDraftItem=null; editDraftAdj=null; renderEdit(false); } else renderList(); }
   else renderList();
 });
 $("#addGatheringBtn").addEventListener("click", newGathering);
