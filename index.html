@@ -127,7 +127,18 @@
   .hero .hs-num{font-size:24px; font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; line-height:1.1;}
   .hero .hs-lab{font-size:12px; color:var(--muted);}
   .hero-badges{display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:13px;}
-  .hero .badge{font-size:12.5px; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-bd); border-radius:999px; padding:4px 11px; font-weight:650;}
+  .hero .badge{position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:5px; font-size:12.5px;
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:999px; padding:4px 11px 4px 7px; font-weight:650;}
+  .hero .badge-ic{display:inline-flex; flex:0 0 auto;}
+  .hero .badge-ic svg{width:19px; height:19px; display:block;}
+  .hero .badge::after{content:''; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(110deg, transparent 35%, rgba(255,255,255,.6) 50%, transparent 65%);
+    transform:translateX(-130%); animation:badgeShine 3.4s ease-in-out infinite;}
+  .hero .badge:nth-child(2)::after{animation-delay:.5s;}
+  .hero .badge:nth-child(3)::after{animation-delay:1s;}
+  .hero .badge:nth-child(4)::after{animation-delay:1.5s;}
+  @keyframes badgeShine{0%,55%{transform:translateX(-130%);} 78%,100%{transform:translateX(130%);}}
+  @media (prefers-reduced-motion: reduce){ .hero .badge::after{animation:none;} }
   .hero-invite{margin-top:13px; background:transparent; border:0; color:var(--accent); font-size:13.5px; font-weight:650; cursor:pointer;}
   .listrow{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--panel);
     border:1px solid var(--line); border-radius:14px; margin-bottom:10px; cursor:pointer;}
@@ -884,7 +895,7 @@ async function renderList(){
         <div class="hs"><span class="hs-num" data-count="${st.friends}">0</span><span class="hs-lab">位朋友</span></div>
         <div class="hs"><span class="hs-num" data-count="${st.total}" data-money="1">$0</span><span class="hs-lab">總金額</span></div>
       </div>
-      ${badges.length ? `<div class="hero-badges">${badges.map(b=>`<span class="badge" title="${esc(b.desc)}">${b.icon} ${b.label}</span>`).join('')}</div>` : ''}
+      ${badges.length ? `<div class="hero-badges">${badges.map(b=>`<span class="badge" title="${esc(b.desc)}"><span class="badge-ic">${b.icon}</span>${b.label}</span>`).join('')}</div>` : ''}
       <button class="hero-invite" onclick="shareApp()">🎁 揪朋友一起用${inv?`・已揪 ${inv} 位`:''}</button>
     </div>` : '';
   $("#main").innerHTML = hero + `<div id="listWrap">` + ordered.map(g => { const lc = parseCover(g.cover); return `
@@ -907,13 +918,20 @@ const BADGE_MASTER_ITEMS = 20;            // 累積筆數→分帳達人
 const BADGE_KING_INVITES = 5;             // 成功邀請→揪團王
 const UNLOCK_THEME_INVITES = 3;           // 成功邀請→解鎖森林主題
 function myInvites(){ return (_myBadges && Number(_myBadges.invited)) || 0; }
+// 原創多色徽記（漸層＋呼應品牌的勾勾），搭配金箔光掃動畫
+const BADGE_ICONS = {
+  elder: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bElder" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7da72"/><stop offset="1" stop-color="#df8c34"/></linearGradient></defs><path d="M9 7 7 3h2.6l1.4 2.6z" fill="#7dd3a8"/><path d="M15 7l2-4h-2.6L13 5.6z" fill="#52b389"/><circle cx="12" cy="14" r="6.4" fill="url(#bElder)"/><path d="M9.2 14.1l1.9 1.9 3.5-3.7" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  master: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bMaster" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3a8"/><stop offset="1" stop-color="#4aa6da"/></linearGradient></defs><path d="M12 2.5l2.6 5.5 6 .7-4.4 4.1 1.1 5.9L12 16l-5.3 2.7 1.1-5.9L3.4 8.7l6-.7z" fill="url(#bMaster)"/><circle cx="12" cy="11.4" r="2.1" fill="#fff" opacity=".85"/></svg>`,
+  king: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bKing" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7d35a"/><stop offset="1" stop-color="#e0813a"/></linearGradient></defs><path d="M3.5 18l-1-9 4.3 4L12 6l5.2 7 4.3-4-1 9z" fill="url(#bKing)"/><rect x="3.5" y="18" width="17" height="2.6" rx="0.7" fill="#d9772f"/><circle cx="12" cy="9" r="1.2" fill="#e67ba8"/><circle cx="6.7" cy="13" r="0.9" fill="#7dd3a8"/><circle cx="17.3" cy="13" r="0.9" fill="#7dd3a8"/></svg>`,
+  friend: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFriend" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ec84b0"/><stop offset="1" stop-color="#f0934a"/></linearGradient></defs><path d="M11 2.5c.7 4.6 2.3 6.2 6.9 6.9-4.6.7-6.2 2.3-6.9 6.9-.7-4.6-2.3-6.2-6.9-6.9 4.6-.7 6.2-2.3 6.9-6.9z" fill="url(#bFriend)"/><path d="M18.5 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" fill="#f5cd5a"/></svg>`
+};
 function earnedBadges(){
   const st = _myStats||{items:0}, b = _myBadges||{}, list = [];
-  if(b.firstSeen && String(b.firstSeen) < BADGE_ELDER_CUTOFF) list.push({k:'elder', icon:'🏅', label:'元老', desc:'早期就開始用的元老'});
-  if((st.items||0) >= BADGE_MASTER_ITEMS) list.push({k:'master', icon:'🎯', label:'分帳達人', desc:`累積記了 ${BADGE_MASTER_ITEMS} 筆以上`});
-  if(myInvites() >= BADGE_KING_INVITES) list.push({k:'king', icon:'👑', label:'揪團王', desc:`成功邀請 ${BADGE_KING_INVITES} 位以上`});
-  if(b.wasInvited) list.push({k:'friend', icon:'🤝', label:'新朋友', desc:'朋友揪你一起用的'});
-  return list;
+  if(b.firstSeen && String(b.firstSeen) < BADGE_ELDER_CUTOFF) list.push({k:'elder', label:'元老', desc:'早期就開始用的元老'});
+  if((st.items||0) >= BADGE_MASTER_ITEMS) list.push({k:'master', label:'分帳達人', desc:`累積記了 ${BADGE_MASTER_ITEMS} 筆以上`});
+  if(myInvites() >= BADGE_KING_INVITES) list.push({k:'king', label:'揪團王', desc:`成功邀請 ${BADGE_KING_INVITES} 位以上`});
+  if(b.wasInvited) list.push({k:'friend', label:'新朋友', desc:'朋友揪你一起用的'});
+  return list.map(x=>({...x, icon: BADGE_ICONS[x.k]}));
 }
 // 數字往上跳的動畫（IG 追蹤數那種爬升感）
 function countUp(el, target, isMoney){
