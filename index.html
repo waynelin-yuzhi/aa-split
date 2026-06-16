@@ -243,10 +243,18 @@
   .gsum.has-cover .gsum-meta{color:rgba(255,255,255,.95); text-shadow:0 1px 4px rgba(0,0,0,.7);}
   .gsum.has-cover .gsum-meta b{color:#fff;}
   .gsum.has-cover .gsum-row input[type=date]{background:rgba(0,0,0,.4); border-color:rgba(255,255,255,.35); color:#fff;}
-  .cover-ctrl{position:absolute; top:10px; right:10px; display:flex; gap:6px; z-index:2;}
+  .cover-ctrl{position:absolute; top:10px; right:10px; display:flex; gap:6px; z-index:4;}
   .cover-btn{background:rgba(0,0,0,.45); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:999px;
     padding:5px 11px; font-size:12px; cursor:pointer; backdrop-filter:blur(4px);}
+  .cover-icon{padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px;}
+  .cover-icon svg{width:19px; height:19px; display:block;}
   .gsum:not(.has-cover) .cover-btn{background:var(--panel2); color:var(--muted); border-color:var(--line); backdrop-filter:none;}
+  .cover-menu{display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:5; flex-direction:column;
+    background:rgba(0,0,0,.8); border:1px solid rgba(255,255,255,.2); border-radius:12px; overflow:hidden; backdrop-filter:blur(6px); min-width:108px;}
+  .cover-menu.open{display:flex;}
+  .cover-menu button{background:transparent; border:0; color:#fff; font-size:13.5px; text-align:left; padding:11px 15px; cursor:pointer; white-space:nowrap;}
+  .cover-menu button:active{background:rgba(255,255,255,.14);}
+  .cover-menu button + button{border-top:1px solid rgba(255,255,255,.13);}
   .gsum.adjusting{padding-bottom:34px;}
   .gsum .cover-slider{position:absolute; left:14px; right:14px; bottom:9px; width:auto; z-index:3; accent-color:var(--accent);}
   .listrow.has-cover{min-height:98px; align-items:flex-end; border:0; background-repeat:no-repeat;}
@@ -706,6 +714,7 @@ const ICONS = {
   percent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="6.5" y1="17.5" x2="17.5" y2="6.5"/><circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="16" r="2.2"/></svg>`,
   transfer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/></svg>`,
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>`,
+  image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l4.5-4 3.5 3 3-2.5L20 17"/></svg>`,
   bell: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10.5 20a2 2 0 0 0 3 0"/></svg>`
 };
 
@@ -1054,8 +1063,13 @@ function renderEdit(isNew){
         ${cd
           ? (_coverAdjust
               ? `<button class="cover-btn" onclick="toggleCoverAdjust()">完成</button>`
-              : `<button class="cover-btn" onclick="toggleCoverAdjust()">調整位置</button><button class="cover-btn" onclick="changeCover()">換封面</button><button class="cover-btn" onclick="removeCover()" aria-label="移除封面">✕</button>`)
-          : `<button class="cover-btn" onclick="changeCover()">＋ 設封面</button>`}
+              : `<button class="cover-btn cover-icon" onclick="toggleCoverMenu(event)" aria-label="封面設定">${ICONS.image}</button>
+                 <div class="cover-menu" id="coverMenu">
+                   <button onclick="toggleCoverAdjust()">調整位置</button>
+                   <button onclick="changeCover()">換封面</button>
+                   <button onclick="removeCover()">移除封面</button>
+                 </div>`)
+          : `<button class="cover-btn cover-icon" onclick="changeCover()" aria-label="設封面">${ICONS.image}</button>`}
       </div>
       ${cd && _coverAdjust ? `<input type="range" class="cover-slider" min="0" max="100" value="${cd.pos}" oninput="onCoverPosInput(this.value)" onchange="onCoverPosSave(this.value)" aria-label="封面上下位置">` : ''}
       <input id="gTitle" class="gtitle" placeholder="帳本名稱（例：墾丁旅遊 / 六月聚餐）" value="${esc(current.title)}">
@@ -1170,6 +1184,12 @@ async function removeCover(){
   persistCurrent(); renderEdit(false);
 }
 function toggleCoverAdjust(){ _coverAdjust = !_coverAdjust; renderEdit(false); }
+function _closeCoverMenu(){ const m=$("#coverMenu"); if(m) m.classList.remove('open'); }
+function toggleCoverMenu(e){
+  if(e) e.stopPropagation();
+  const m=$("#coverMenu"); if(!m) return;
+  if(m.classList.toggle('open')) setTimeout(()=>document.addEventListener('click', _closeCoverMenu, {once:true}), 0);
+}
 function onCoverPosInput(v){   // 拖曳時即時預覽（只改 style，不重畫）
   const el = document.querySelector('.gsum'); if(el) el.style.backgroundPosition = `center, center ${v}%`;
 }
