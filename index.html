@@ -116,6 +116,9 @@
   .hero .hs{display:flex; flex-direction:column; align-items:center; gap:3px; flex:1; min-width:0;}
   .hero .hs-num{font-size:24px; font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; line-height:1.1;}
   .hero .hs-lab{font-size:12px; color:var(--muted);}
+  .hero-badges{display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:13px;}
+  .hero .badge{font-size:12.5px; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-bd); border-radius:999px; padding:4px 11px; font-weight:650;}
+  .hero-invite{margin-top:13px; background:transparent; border:0; color:var(--accent); font-size:13.5px; font-weight:650; cursor:pointer;}
   .listrow{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--panel);
     border:1px solid var(--line); border-radius:14px; margin-bottom:10px; cursor:pointer;}
   .listrow:active{background:var(--panel2);}
@@ -642,7 +645,9 @@ const Store = {
   },
   async remove(id){ await rpc("g_delete", { p_id:id, p_access_token: ACCESS_TOKEN }); },
   async getOrder(){ const {data,error}=await sb.rpc("g_get_prefs",{p_access_token:ACCESS_TOKEN}); if(error) throw error; return Array.isArray(data)?data:[]; }, // 跨裝置排序（回 jsonb 陣列，不可用 rpc() 解包）
-  async setOrder(ids){ await rpc("g_set_order", { p_access_token: ACCESS_TOKEN, p_order: ids }); }
+  async setOrder(ids){ await rpc("g_set_order", { p_access_token: ACCESS_TOKEN, p_order: ids }); },
+  async recordReferral(inviter){ await rpc("g_record_referral", { p_access_token: ACCESS_TOKEN, p_inviter: inviter }); },
+  async getBadges(){ const {data,error}=await sb.rpc("g_my_badges",{p_access_token:ACCESS_TOKEN}); if(error) throw error; return data||{}; }
 };
 
 /* =========================================================================
@@ -769,6 +774,7 @@ let current = null;         // 編輯中的聚會
 let editDraftItem = null;   // 正在新增/編輯的項目
 let _coverAdjust = false;   // 封面調整位置模式
 let _myStats = null;        // 個人成就統計（Store.list 算出）
+let _myBadges = null;       // 徽章/邀請數（g_my_badges）
 let editDraftAdj = null;     // 正在新增/編輯的服務費/折扣
 let editDraftTransfer = null; // 正在新增/編輯的轉帳/還款
 
@@ -846,6 +852,8 @@ async function renderList(){
   const ordered = applySavedOrder(gs);
   const grip = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="5" cy="4" r="1.3"/><circle cx="11" cy="4" r="1.3"/><circle cx="5" cy="8" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg>`;
   const st = _myStats || {items:0, total:0, friends:0};
+  const badges = earnedBadges();
+  const inv = (_myBadges && Number(_myBadges.invited)) || 0;
   const hero = st.items>0 ? `
     <div class="hero">
       <div class="hero-label">你用「欸，算一下！」已經</div>
@@ -854,6 +862,8 @@ async function renderList(){
         <div class="hs"><span class="hs-num" data-count="${st.friends}">0</span><span class="hs-lab">位朋友</span></div>
         <div class="hs"><span class="hs-num" data-count="${st.total}" data-money="1">$0</span><span class="hs-lab">總金額</span></div>
       </div>
+      ${badges.length ? `<div class="hero-badges">${badges.map(b=>`<span class="badge" title="${esc(b.desc)}">${b.icon} ${b.label}</span>`).join('')}</div>` : ''}
+      <button class="hero-invite" onclick="shareApp()">🎁 揪朋友一起用${inv?`・已揪 ${inv} 位`:''}</button>
     </div>` : '';
   $("#main").innerHTML = hero + `<div id="listWrap">` + ordered.map(g => { const lc = parseCover(g.cover); return `
     <div class="listrow ${lc?'has-cover':''}" data-id="${g.id}" onclick="openGathering('${g.id}')"${lc?` style="background-image:linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.62)), url('${lc.url}'); background-size:cover; background-position:center, center ${lc.pos}%;"`:''}>
@@ -868,6 +878,20 @@ async function renderList(){
     + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()" aria-label="新增分帳">＋</button>`;
   enableListDrag();
   document.querySelectorAll('.hs-num').forEach(el=>countUp(el, Number(el.dataset.count)||0, el.dataset.money==='1'));
+}
+// 徽章（門檻可調）：元老/分帳達人/揪團王/新朋友
+const BADGE_ELDER_CUTOFF = '2026-09-01';  // 在此之前開始用＝元老
+const BADGE_MASTER_ITEMS = 20;            // 累積筆數→分帳達人
+const BADGE_KING_INVITES = 5;             // 成功邀請→揪團王
+const UNLOCK_THEME_INVITES = 3;           // 成功邀請→解鎖森林主題
+function myInvites(){ return (_myBadges && Number(_myBadges.invited)) || 0; }
+function earnedBadges(){
+  const st = _myStats||{items:0}, b = _myBadges||{}, list = [];
+  if(b.firstSeen && String(b.firstSeen) < BADGE_ELDER_CUTOFF) list.push({k:'elder', icon:'🏅', label:'元老', desc:'早期就開始用的元老'});
+  if((st.items||0) >= BADGE_MASTER_ITEMS) list.push({k:'master', icon:'🎯', label:'分帳達人', desc:`累積記了 ${BADGE_MASTER_ITEMS} 筆以上`});
+  if(myInvites() >= BADGE_KING_INVITES) list.push({k:'king', icon:'👑', label:'揪團王', desc:`成功邀請 ${BADGE_KING_INVITES} 位以上`});
+  if(b.wasInvited) list.push({k:'friend', icon:'🤝', label:'新朋友', desc:'朋友揪你一起用的'});
+  return list;
 }
 // 數字往上跳的動畫（IG 追蹤數那種爬升感）
 function countUp(el, target, isMoney){
@@ -1227,9 +1251,10 @@ function shareInvite(){
   if(!current.slug && !current.shareToken){ toast("帳本還沒建立好"); return; }
   // 用 LIFF 網址 + query，讓對方在 LINE 內開啟並登入；hash 在登入轉址會掉
   // 有 slug 走短連結；沒有（舊資料）退回 id+token
+  const by = MY_UID ? `&by=${MY_UID}` : "";   // 邀請歸因：記下是誰揪的
   const link = current.slug
-    ? `https://liff.line.me/${LIFF_ID}?g=${current.slug}`
-    : `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}`;
+    ? `https://liff.line.me/${LIFF_ID}?g=${current.slug}${by}`
+    : `https://liff.line.me/${LIFF_ID}?g=${current.id}&t=${current.shareToken}${by}`;
   const name = current.title || "未命名帳本";
   const txt = `欸，算一下！— 簡單好用的小工具\n邀你一起算一下，點開就能加入「${name}」\n${link}`;
   if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
@@ -1241,7 +1266,7 @@ function shareInvite(){
   } else fallbackCopy(link);
 }
 function shareApp(){   // 分享純 App 入口（沒帶聚會），朋友點開用自己的 LINE 登入、各記各的
-  const link = `https://liff.line.me/${LIFF_ID}`;
+  const link = `https://liff.line.me/${LIFF_ID}${MY_UID?`?by=${MY_UID}`:""}`;
   const txt = `欸，算一下！— 朋友間 AA 分帳的小工具，點開就能用：\n${link}`;
   if(liffReady && inLineClient && liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")){
     liff.shareTargetPicker([ flexCard("AA 分帳小工具", "記帳、自動算最少轉帳、各記各的，點開就能用", link, "開始使用") ]).then(()=>toast("已開啟分享")).catch(()=>toast("分享取消"));
@@ -2065,8 +2090,11 @@ async function boot(){
   const hp = new URLSearchParams((location.hash||"").replace(/^#/,""));
   const gid = qp.get("g") || hp.get("g");
   const tok = qp.get("t") || hp.get("t");
+  const by  = qp.get("by") || hp.get("by");   // 邀請歸因：誰揪我來的
   // 讀完參數立刻把網址清乾淨：網址列不再殘留 ?g=...，避免之後複製網址列誤把某帳本當「App 連結」分享出去
   if(location.search || location.hash) history.replaceState(null, "", location.pathname);
+  if(by && by!==MY_UID){ try{ await Store.recordReferral(by); }catch(e){ console.error(e); } }
+  try{ _myBadges = await Store.getBadges(); }catch(e){ console.error(e); }
   if(gid){
     $("#title").textContent = "載入中…";
     $("#main").innerHTML = loadingHTML("載入帳本中…");
