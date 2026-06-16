@@ -37,6 +37,16 @@
     --accent-soft:rgba(200,116,79,.14); --accent-bd:rgba(200,116,79,.42);
     --danger-soft:rgba(200,88,74,.12); --danger-bd:rgba(200,88,74,.32);
   }
+  html[data-theme="forest"]{
+    --bg:#eef3e9; --panel:#fafdf6; --panel2:#e2ebd8; --line:#d4e0c8;
+    --ink:#2c3528; --muted:#74806c; --faint:#a6b29a;
+    --accent:#4f8f5a; --accent2:#3c7046; --warn:#d8973a; --danger:#c55a47;
+    --pay:#c55a47; --get:#4f8f5a;
+    --on-accent:#fbfff7; --amount:#c55a47;
+    --bar-bg:rgba(238,243,233,.86); --rc-bg:#fafdf6;
+    --accent-soft:rgba(79,143,90,.14); --accent-bd:rgba(79,143,90,.42);
+    --danger-soft:rgba(197,90,71,.12); --danger-bd:rgba(197,90,71,.32);
+  }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif;
@@ -260,12 +270,15 @@
     display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px;}
   .pm-name{font-size:17px; font-weight:700;}
   .theme-pick{display:flex; gap:10px;}
-  .theme-opt{flex:1; display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--line);
+  .theme-pick{flex-wrap:wrap;}
+  .theme-opt{flex:1 1 30%; min-width:90px; display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--line);
     border-radius:12px; padding:10px 12px; font-size:14px; color:var(--ink); cursor:pointer;}
   .theme-opt.sel{border-color:var(--accent); background:var(--accent-soft);}
+  .theme-opt.locked{opacity:.6;}
   .theme-opt .sw{width:26px; height:26px; border-radius:8px; flex:0 0 auto; border:1px solid var(--line);}
   .sw-cool{background:linear-gradient(135deg,#0f1115 0 50%,#7dd3a8 50% 100%);}
   .sw-warm{background:linear-gradient(135deg,#faf6ef 0 50%,#c8744f 50% 100%);}
+  .sw-forest{background:linear-gradient(135deg,#eef3e9 0 50%,#4f8f5a 50% 100%);}
   .mm-add{display:flex; gap:8px;}
   .mm-add input{flex:1 1 auto; min-width:0;}
   .mm-add .btn{flex:0 0 auto; width:auto;}
@@ -308,7 +321,9 @@
       <div class="theme-pick">
         <button type="button" class="theme-opt" data-theme-opt="cool" onclick="setTheme('cool')"><span class="sw sw-cool"></span>冷調</button>
         <button type="button" class="theme-opt" data-theme-opt="warm" onclick="setTheme('warm')"><span class="sw sw-warm"></span>暖調</button>
-      </div></label>
+        <button type="button" class="theme-opt" data-theme-opt="forest" onclick="setTheme('forest')"><span class="sw sw-forest"></span><span id="forestLab">森林</span></button>
+      </div>
+      <div class="faint" style="margin-top:6px;" id="forestHint"></div></label>
     <button class="btn ghost block" onclick="shareApp()">分享這個 App 給朋友</button>
     <div class="faint" style="margin:8px 2px 0;">分享純 App 連結，朋友點開用自己的 LINE 登入、各記各的（不是把人加進某本帳本）。</div>
     <div class="spacer"></div>
@@ -746,9 +761,11 @@ function openProfile(){
   $("#profileModal").classList.remove("hidden");
 }
 function closeProfile(){ $("#profileModal").classList.add("hidden"); }
-/* 介面色調：個人偏好，存本機；冷調(預設) / 暖調 */
+/* 介面色調：個人偏好，存本機；冷調(預設) / 暖調 / 森林(邀請解鎖) */
 function getTheme(){ try{ return localStorage.getItem('aa_theme') || 'cool'; }catch(e){ return 'cool'; } }
+function forestUnlocked(){ return myInvites() >= UNLOCK_THEME_INVITES; }
 function setTheme(t){
+  if(t==='forest' && !forestUnlocked()){ toast(`邀請 ${UNLOCK_THEME_INVITES} 位朋友解鎖森林主題（目前 ${myInvites()} 位）`); markThemeSel(); return; }
   try{ localStorage.setItem('aa_theme', t); }catch(e){}
   if(t==='cool') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   markThemeSel();
@@ -756,6 +773,11 @@ function setTheme(t){
 function markThemeSel(){
   const cur = getTheme();
   document.querySelectorAll('.theme-opt').forEach(b=>b.classList.toggle('sel', b.dataset.themeOpt===cur));
+  const fLocked = !forestUnlocked();
+  const fOpt = document.querySelector('.theme-opt[data-theme-opt="forest"]');
+  if(fOpt) fOpt.classList.toggle('locked', fLocked);
+  const fLab = $("#forestLab"); if(fLab) fLab.textContent = fLocked ? '森林 🔒' : '森林';
+  const fHint = $("#forestHint"); if(fHint) fHint.textContent = fLocked ? `森林主題：邀請 ${UNLOCK_THEME_INVITES} 位朋友解鎖（目前 ${myInvites()} 位）` : '';
 }
 function saveProfile(){
   const pf = myProfile();
