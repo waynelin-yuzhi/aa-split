@@ -1448,7 +1448,6 @@ function renderEdit(isNew){
       <button class="qbtn" onclick="openMembers()"><span class="qi">${ICONS.members}</span>成員 ${m.length}</button>
       ${CLOUD && current.shareToken ? `<button class="qbtn" onclick="shareInvite()"><span class="qi">${ICONS.invite}</span>邀請</button>` : ''}
       <button class="qbtn ${canCompute?'':'dim'}" onclick="goResult()"><span class="qi">${ICONS.calc}</span>算分帳</button>
-      <button class="qbtn" onclick="quickServiceCharge()" ${items.length===0?'disabled style="opacity:.4"':''}><span class="qi">${ICONS.percent}</span>服務費</button>
     </div>
 
     <div class="card">
@@ -2136,13 +2135,6 @@ function adjRowHTML(a, sub){
     <div class="price num" style="color:${a.sign<0?'var(--get)':'var(--ink)'}">${signed<0?'−':'+'}${money(Math.abs(signed))}</div>
     <div class="faint">›</div>
   </div>`;
-}
-function quickServiceCharge(){
-  current.adjustments = current.adjustments || [];
-  if(current.adjustments.some(a=>a.name==='服務費')){ toast('已經有服務費了'); return; }
-  current.adjustments.push({id:uid(), name:'服務費', kind:'pct', value:10, sign:1});
-  logHistory('加上 服務費 10%');
-  persistCurrent(); renderEdit(false);
 }
 function startAddAdj(){ editDraftAdj = {id:uid(), name:'', kind:'pct', value:'', sign:1, _isNew:true}; renderAdjForm(); }
 function startEditAdj(id){
