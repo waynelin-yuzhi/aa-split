@@ -399,6 +399,23 @@
   .cl-d{font-size:12px; color:var(--muted);}
   .cl-items{margin:0; padding-left:18px;}
   .cl-items li{font-size:13px; color:var(--ink); margin:3px 0; line-height:1.5;}
+  /* 個人設定壓緊（盡量不用滑動）*/
+  #profileModal .modal-card{padding:14px 16px;}
+  #profileModal .modal-head{margin-bottom:8px;}
+  #profileModal .avatar-lg{width:40px; height:40px;}
+  #profileModal #pmAvatarEdit{margin-bottom:8px !important;}
+  #profileModal .avopts{gap:7px;}
+  #profileModal .avopt-pic{width:40px; height:40px;}
+  #profileModal .avopt span{font-size:11px;}
+  #profileModal label.fld{margin-bottom:7px;}
+  #profileModal label.fld > span{margin-bottom:3px; font-size:12.5px;}
+  #profileModal label.fld input{height:38px;}
+  #profileModal .theme-opt{padding:6px 9px;}
+  #profileModal .theme-opt .sw{width:20px; height:20px;}
+  #profileModal #forestHint{margin-top:3px !important;}
+  #profileModal .btn.block{padding:11px;}
+  #profileModal .row{margin-top:8px !important;}
+  #profileModal .pm-legal{margin-top:11px; padding-top:9px;}
   .topgap{margin-top:6px;}
   hr.sep{border:0; border-top:1px solid var(--line); margin:16px 0;}
 </style>
@@ -2791,21 +2808,30 @@ function obShow(){
   if(_obIdx>=total) return obClosing();
   const s = ONBOARD_STEPS[_obIdx], el = document.querySelector(s.sel);
   if(!el){ _obIdx++; return obShow(); }
-  const r = el.getBoundingClientRect(), pad=8;
-  const hole=document.getElementById('coachHole'), tip=document.getElementById('coachTip');
-  hole.style.cssText = `left:${r.left-pad}px;top:${r.top-pad}px;width:${r.width+pad*2}px;height:${r.height+pad*2}px;box-shadow:0 0 0 9999px rgba(0,0,0,.74);`;
+  const tip=document.getElementById('coachTip');
   tip.innerHTML = `<div class="ct-step">步驟 ${_obIdx+1} / ${total}</div>
     <div class="ct-title">${esc(s.title)}</div><div class="ct-desc">${esc(s.desc)}</div>
     <div class="ct-row"><button class="ct-skip" onclick="obFinish()">略過教學</button>
       <button class="ct-next" onclick="obNext()">下一步</button></div>`;
-  positionTip(tip, r, s.place);
+  el.scrollIntoView({block:'center', behavior:'auto'});   // 先把目標捲到畫面中央，聚光與說明才不會跑到視窗外
+  const myIdx=_obIdx;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ if(_obIdx===myIdx) obPlace(el); }));   // 連點下一步時，舊的不蓋掉新的
 }
-function positionTip(tip, r, place){
+function obPlace(el){
+  const r = el.getBoundingClientRect(), pad=8;
+  const hole=document.getElementById('coachHole'), tip=document.getElementById('coachTip');
+  hole.style.cssText = `left:${r.left-pad}px;top:${r.top-pad}px;width:${r.width+pad*2}px;height:${r.height+pad*2}px;box-shadow:0 0 0 9999px rgba(0,0,0,.74);`;
+  positionTip(tip, r);
+}
+function positionTip(tip, r){
   tip.style.left='50%'; tip.style.right='auto'; tip.style.transform='translateX(-50%)';
   tip.style.width='min(520px, calc(100vw - 32px))';
-  const below = place==='below' || r.top < window.innerHeight*0.4;
-  if(below){ tip.style.top=(r.bottom+14)+'px'; tip.style.bottom='auto'; }
-  else { tip.style.top='auto'; tip.style.bottom=(window.innerHeight - r.top + 14)+'px'; }
+  const gap=14, vh=window.innerHeight, h=tip.offsetHeight||170;
+  let top;
+  if(r.bottom + gap + h <= vh - 12) top = r.bottom + gap;          // 放目標下方
+  else if(r.top - gap - h >= 12) top = r.top - gap - h;            // 放目標上方
+  else top = Math.max(12, vh - h - 12);                            // 都不夠就貼底、夾在畫面內
+  tip.style.top = top+'px'; tip.style.bottom='auto';
 }
 function obClosing(){
   const hole=document.getElementById('coachHole'), tip=document.getElementById('coachTip');
