@@ -366,6 +366,8 @@
     </div>
     <label class="fld"><span>頭像</span>
       <div id="pmAvatarEdit"></div></label>
+    <label class="fld"><span>你的稱呼（其他人在帳本裡會看到）</span>
+      <input id="pmNick" maxlength="20"></label>
     <label class="fld"><span>我的收款資訊（給人轉帳用，選填）</span>
       <input id="pmPay" placeholder="例：國泰 700-1234567 / LINE Pay 連結"></label>
     <div class="faint" style="margin:-2px 2px 14px;">設定後，你建立或加入的帳本會自動帶上，結算時別人看得到、可一鍵複製。</div>
@@ -712,7 +714,7 @@ const Store = {
   },
   async create(g){
     const row = await rpc("g_create", { p_access_token: ACCESS_TOKEN, p_title:g.title||null,
-      p_event_date:g.date||null, p_currency:g.currency||"TWD", p_my_name: MY_NAME||"我", p_my_member_id: uid(), p_my_pic: MY_PIC||null });
+      p_event_date:g.date||null, p_currency:g.currency||"TWD", p_my_name: myName(), p_my_member_id: uid(), p_my_pic: MY_PIC||null });
     return rowToGathering(row);
   },
   async save(g){
@@ -728,7 +730,7 @@ const Store = {
   },
   async join(id, token){  // 邀請流程：把我加進去
     const row = await rpc("g_join", { p_id:id, p_token:token, p_access_token: ACCESS_TOKEN,
-      p_my_name: MY_NAME||"我", p_my_member_id: uid(), p_my_pic: MY_PIC||null });
+      p_my_name: myName(), p_my_member_id: uid(), p_my_pic: MY_PIC||null });
     return rowToGathering(row, token);
   },
   async getBySlug(slug){  // 短連結讀取：成員可讀；或持邀請 slug 可讀（尚未加入）
@@ -738,7 +740,7 @@ const Store = {
   },
   async joinBySlug(slug){ // 短連結加入：把我加進去（新成員）
     const row = await rpc("g_join_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN,
-      p_my_name: MY_NAME||"我", p_my_member_id: uid(), p_my_pic: MY_PIC||null });
+      p_my_name: myName(), p_my_member_id: uid(), p_my_pic: MY_PIC||null });
     return rowToGathering(row);
   },
   async claimBySlug(slug, memberId){ // 認領：把我綁到 host 預建的某個名字
@@ -772,7 +774,7 @@ const fmtTs = ms => { const d=new Date(ms), p=n=>String(n).padStart(2,'0'); retu
 function logHistory(action){
   if(!current) return;
   if(!Array.isArray(current.history)) current.history = [];
-  current.history.push({ ts: Date.now(), by: MY_UID||null, byName: MY_NAME||"?", action });
+  current.history.push({ ts: Date.now(), by: MY_UID||null, byName: myName(), action });
   if(current.history.length > 200) current.history = current.history.slice(-200);
 }
 
@@ -836,6 +838,8 @@ function applyProfileToCurrent(){
   if(pf.payInfo && !me.payInfo){ me.payInfo = pf.payInfo; changed = true; }
   const av = myAvatar();
   if(av && me.pic !== av){ me.pic = av; changed = true; }   // 自己的頭像（個人設定優先，否則 LINE）回填、舊帳本也會逐漸補齊
+  const cn = (pf.name||'').trim();   // 只在「有設自訂稱呼」時覆寫，避免蓋掉認領的預設名字
+  if(cn && me.name !== cn){ me.name = cn; changed = true; }
   return changed;
 }
 function renderAvatar(){
@@ -847,8 +851,9 @@ function renderAvatar(){
 let _avatarSel = '';   // 個人設定裡暫存的頭像選擇（''＝沿用 LINE、preset:KEY、或上傳的 url）
 function openProfile(){
   const pf = myProfile();
-  $("#pmName").textContent = MY_NAME || "我";
-  setAvatarEl($("#pmAvatar"), myAvatar(), MY_NAME);
+  $("#pmName").textContent = myName();
+  setAvatarEl($("#pmAvatar"), myAvatar(), myName());
+  const nick = $("#pmNick"); if(nick){ nick.value = pf.name || ''; nick.placeholder = MY_NAME || '你的名字'; }
   $("#pmPay").value = pf.payInfo || "";
   _avatarSel = pf.avatar || '';
   renderAvatarEditor();
@@ -927,6 +932,7 @@ function markThemeSel(){
 async function saveProfile(){
   const pf = myProfile();
   pf.payInfo = $("#pmPay").value.trim();
+  pf.name = ($("#pmNick").value||'').trim();   // 自訂稱呼，空＝沿用 LINE 名
   pf.avatar = _avatarSel || '';   // 頭像選擇：''＝沿用 LINE、preset:KEY、或上傳 url
   saveMyProfile(pf);
   // 精選徽章存雲端（跨裝置 + 讓同帳本的人看到你的第一順位）
@@ -935,7 +941,7 @@ async function saveProfile(){
   // 套到目前聚會「我」的成員（收款資訊 + 頭像，覆寫成最新值）並存雲端
   if(current && MY_UID){
     const me = (current.members||[]).find(x=>x.uid===MY_UID);
-    if(me){ me.payInfo = pf.payInfo; const av=myAvatar(); if(av) me.pic=av; else delete me.pic; persistCurrent(); if(view==="edit") renderEdit(false); }
+    if(me){ me.payInfo = pf.payInfo; const av=myAvatar(); if(av) me.pic=av; else delete me.pic; const cn=(pf.name||'').trim(); if(cn) me.name=cn; persistCurrent(); if(view==="edit") renderEdit(false); }
   }
   renderAvatar();
   closeProfile();
@@ -1205,6 +1211,7 @@ const PRESET_AVATARS = {
 function presetSvg(pic){ return (typeof pic==='string' && pic.slice(0,7)==='preset:') ? (PRESET_AVATARS[pic.slice(7)]||null) : null; }
 function validPicUrl(pic){ return (typeof pic==='string' && /^https:\/\//.test(pic) && !/['"\\<>]/.test(pic)) ? pic : null; }
 function myAvatar(){ return myProfile().avatar || MY_PIC || ''; }   // 我的有效頭像：個人設定優先，否則 LINE 大頭貼
+function myName(){ return (myProfile().name||'').trim() || MY_NAME || '我'; }   // 我的稱呼：自訂優先，否則 LINE 名
 function avatarParts(pic, name){   // → {style, inner}：preset 出 svg、合法 url 出底圖、否則首字色圈
   const ps = presetSvg(pic); if(ps) return { style:'', inner:ps };
   const url = validPicUrl(pic); if(url) return { style:`background-image:url('${url}')`, inner:'' };
@@ -2304,38 +2311,20 @@ function copyPay(memberId){
   if(navigator.clipboard?.writeText) navigator.clipboard.writeText(v).then(()=>toast("已複製收款資訊")).catch(()=>fallbackCopy(v));
   else fallbackCopy(v);
 }
+// 複製文字：精簡＝只留標題 + 最少轉帳（誰付給誰、未付的附收款帳號方便轉）
 function resultText(){
   const r = lastResult;
   const smap = normSettle(current.settlements);
-  const ordered = current.members.slice().sort((a,b)=> r.net[b.id]-r.net[a.id]);
-  let s = `🧾 ${current.title||"欸，算一下！"}（${current.date||""}）\n`;
-  if(r.adjustment){
-    let bits = r.adjustments.map(a=>`${a.sign<0?'−':'+'}${a.kind==='pct'?a.value+'%':money(a.value)} ${a.name}`).join("、");
-    s += `小計 ${money(r.subtotal)}（${bits}）→ 總額 ${money(r.total)}・${current.members.length} 人\n\n`;
-  } else {
-    s += `總額 ${money(r.total)}・${current.members.length} 人\n\n`;
-  }
-  s += `〔每人〕\n`;
-  for(const p of ordered){
-    const net=r.netR[p.id];
-    const tag = net>0?`該收 ${money(net)}`:(net<0?`該付 ${money(-net)}`:"打平");
-    s += `・${p.name}：應付 ${money(r.owe[p.id])}（${tag}）\n`;
-  }
-  if(current.transfers && current.transfers.length){
-    s += `\n🔁 已記錄的轉帳/還款\n`;
-    for(const t of current.transfers) s += `・${_memName(t.from)} → ${_memName(t.to)}：${money(t.amount)}${t.note?`（${t.note}）`:""}\n`;
-  }
-  s += `\n💸 ${(current.transfers&&current.transfers.length)?'還要喬（最少轉帳）':'最少轉帳'}\n`;
-  if(r.transfers.length===0) s += `・${(current.transfers&&current.transfers.length)?'都喬平了，免再轉 🎉':'大家剛好打平，免轉帳 🎉'}\n`;
-  else for(const t of r.transfers){
+  let s = `🧾 ${current.title||"欸，算一下！"}\n💸 ${(current.transfers&&current.transfers.length)?'還要喬（最少轉帳）':'最少轉帳'}\n`;
+  if(r.transfers.length===0){
+    s += `・${(current.transfers&&current.transfers.length)?'都喬平了，免再轉 🎉':'大家剛好打平，免轉帳 🎉'}`;
+  } else for(const t of r.transfers){
     const st = smap[t.from+">"+t.to] || {};
-    const mark = st.confirmed ? " ✅已確認收款" : (st.paid ? " ⏳已付待確認" : "");
     const toM = current.members.find(m=>m.id===t.to);
     const pay = (!st.paid && toM && toM.payInfo && toM.payInfo.trim());
-    s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}${mark}${pay?`（收款：${toM.payInfo.trim()}）`:""}\n`;
+    s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}${pay?`（收款：${toM.payInfo.trim()}）`:""}\n`;
   }
-  if(r.allOk) s += `\n✅ 已驗算`;
-  return s;
+  return s.trim();
 }
 
 function copyText(){
@@ -2411,7 +2400,7 @@ function showJoinPrompt(g, token){
       ${unclaimed.map(m=>`<span class="chip claimchip" onclick="claimMember('${m.id}')">${esc(m.name)}</span>`).join("")}
     </div>
     <div class="spacer"></div>
-    <button class="btn ghost block" onclick="acceptJoin()">＋ 用我的 LINE 名字（${esc(MY_NAME||"我")}）加入</button>
+    <button class="btn ghost block" onclick="acceptJoin()">＋ 用我的名字（${esc(myName())}）加入</button>
   ` : `
     <button class="btn block" onclick="acceptJoin()">加入這本帳本</button>
   `;
