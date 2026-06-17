@@ -399,23 +399,24 @@
   .cl-d{font-size:12px; color:var(--muted);}
   .cl-items{margin:0; padding-left:18px;}
   .cl-items li{font-size:13px; color:var(--ink); margin:3px 0; line-height:1.5;}
-  /* 個人設定壓緊（盡量不用滑動）*/
-  #profileModal .modal-card{padding:14px 16px;}
-  #profileModal .modal-head{margin-bottom:8px;}
-  #profileModal .avatar-lg{width:40px; height:40px;}
-  #profileModal #pmAvatarEdit{margin-bottom:8px !important;}
-  #profileModal .avopts{gap:7px;}
-  #profileModal .avopt-pic{width:40px; height:40px;}
+  /* 個人設定：緊湊但留呼吸（單行頭像、上下留白）*/
+  #profileModal .modal-card{padding:20px 16px 18px;}
+  #profileModal .modal-head{margin-bottom:14px;}
+  #profileModal .avatar-lg{width:42px; height:42px;}
+  #profileModal #pmAvatarEdit{margin-bottom:14px !important;}
+  #profileModal .avopts{flex-wrap:nowrap; overflow-x:auto; gap:9px; margin-top:2px; padding-bottom:2px; -ms-overflow-style:none; scrollbar-width:none;}
+  #profileModal .avopts::-webkit-scrollbar{display:none;}
+  #profileModal .avopt{flex:0 0 auto;}
+  #profileModal .avopt-pic{width:42px; height:42px;}
   #profileModal .avopt span{font-size:11px;}
-  #profileModal label.fld{margin-bottom:7px;}
-  #profileModal label.fld > span{margin-bottom:3px; font-size:12.5px;}
-  #profileModal label.fld input{height:38px;}
-  #profileModal .theme-opt{padding:6px 9px;}
-  #profileModal .theme-opt .sw{width:20px; height:20px;}
-  #profileModal #forestHint{margin-top:3px !important;}
-  #profileModal .btn.block{padding:11px;}
-  #profileModal .row{margin-top:8px !important;}
-  #profileModal .pm-legal{margin-top:11px; padding-top:9px;}
+  #profileModal label.fld{margin-bottom:13px;}
+  #profileModal label.fld > span{margin-bottom:5px; font-size:13px;}
+  #profileModal label.fld input{height:40px;}
+  #profileModal .theme-opt{padding:7px 9px;}
+  #profileModal .theme-opt .sw{width:22px; height:22px;}
+  #profileModal #forestHint{margin-top:5px !important;}
+  #profileModal .row{margin-top:10px !important;}
+  #profileModal .pm-legal{margin-top:14px; padding-top:11px;}
   /* 已結清唯讀橫幅 */
   .locked-bar{display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--accent-soft); border:1px solid var(--accent-bd); color:var(--ink); border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:13.5px; font-weight:600;}
   .locked-bar button{background:var(--accent); color:var(--on-accent); border:none; border-radius:9px; padding:7px 13px; font-weight:700; cursor:pointer; white-space:nowrap;}
@@ -1436,7 +1437,7 @@ function reopenForEdit(){ _locked = false; renderEdit(false); toast("已重新�
 const AV_COLORS = ['#4a90d9','#e0813a','#e67ba8','#4f8f5a','#9b6fd4','#3aa6a6','#d9694a','#c79a3a'];
 function avColor(name){ const s=String(name||''); let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return AV_COLORS[h%AV_COLORS.length]; }
 // 5 款原創預設頭像（薄荷綠系漸層＋白 motif，呼應品牌：植物/收據勾/銅板/珍奶/笑臉）
-const PRESET_AVATAR_ORDER = ['sprout','receipt','coin','tea','smiley'];
+const PRESET_AVATAR_ORDER = ['sprout','receipt','coin','tea'];   // 笑臉(smiley)移出選單(偏離主題、為求單行)，但 PRESET_AVATARS 仍保留它讓已選的人不會壞
 const PRESET_AVATARS = {
   sprout:`<svg viewBox="0 0 100 100"><defs><linearGradient id="av_sprout" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8fe0b8"/><stop offset="1" stop-color="#4f9f74"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#av_sprout)"/><rect x="47" y="46" width="6" height="29" rx="3" fill="#fff"/><path d="M50 53 C39 53 29 47 27 36 C39 34 49 41 50 51 Z" fill="#fff"/><path d="M50 49 C61 49 71 43 73 32 C61 30 51 37 50 47 Z" fill="#fff" opacity=".92"/></svg>`,
   receipt:`<svg viewBox="0 0 100 100"><defs><linearGradient id="av_receipt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eaa765"/><stop offset="1" stop-color="#c8744f"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#av_receipt)"/><path d="M34 26 h32 v40 l-5 4 -5 -4 -5 4 -5 -4 -5 4 -2 -1.5 Z" fill="#fff"/><rect x="40" y="34" width="20" height="3.5" rx="1.75" fill="#c8744f"/><rect x="40" y="42" width="14" height="3.5" rx="1.75" fill="#c8744f"/><circle cx="52" cy="58" r="7" fill="#7dd3a8"/><path d="M48.5 58 l2.3 2.3 4-4.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
