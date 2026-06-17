@@ -2018,9 +2018,11 @@ function renderResult(){
         const copyBtn = pay ? `<button class="copyacct iconbtn-sm" onclick="copyPay('${t.to}')" aria-label="複製收款帳號" title="複製收款帳號">${ICONS.copy}</button>` : '';
         let topBtn;
         if(!st.paid){
-          topBtn = copyBtn + (canMarkPaid
-            ? `<button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">標記已付</button>`
-            : `<span class="waithint">待 ${esc(r.nameOf[t.from])} 標記</span>`);
+          let acts = copyBtn;
+          if(canMarkPaid) acts += `<button class="paidbtn" onclick="toggleSettle('${t.from}','${t.to}')">標記已付</button>`;
+          if(canConfirm)  acts += `<button class="confirmbtn ${iAmPayee?'me':''}" onclick="settleReceived('${t.from}','${t.to}')">我已收到</button>`;  // 收款人也能直接結清
+          if(!canMarkPaid && !canConfirm) acts += `<span class="waithint">待 ${esc(r.nameOf[t.from])} 標記</span>`;
+          topBtn = acts;
         } else if(!st.confirmed){
           topBtn = canConfirm
             ? `<button class="confirmbtn ${iAmPayee?'me':''}" onclick="toggleConfirm('${t.from}','${t.to}')">確認收到</button>`
@@ -2117,6 +2119,12 @@ function toggleConfirm(from, to){  // 收款人：確認收到 / 取消確認
   if(!map[k] || !map[k].paid) return;
   map[k].confirmed = !map[k].confirmed;
   logHistory(`${map[k].confirmed?'確認收到':'取消確認'}：${nm[from]||'?'}→${nm[to]||'?'}`);
+  persistCurrent(); renderResult();
+}
+function settleReceived(from, to){  // 收款人：在「未付」狀態直接標「我已收到」→ 一次標成已付＋已確認、直接結清
+  const map = settleMap(), k = from+">"+to, nm = (lastResult&&lastResult.nameOf)||{};
+  map[k] = {paid:true, confirmed:true};
+  logHistory(`收款人標記已收到：${nm[from]||'?'}→${nm[to]||'?'}`);
   persistCurrent(); renderResult();
 }
 function remindReceipt(from, to, amount){   // 一鍵在 LINE 提醒收款人確認（使用者自己選對象送出）
