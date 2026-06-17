@@ -921,7 +921,7 @@ function renderAvatarEditor(){
   const sel = _avatarSel || '';
   const opt = (active, inner, onclick, label) => `<div class="avopt ${active?'sel':''}" onclick="${onclick}"><div class="avopt-pic ${label==='上傳'?'avopt-up':''}">${inner}</div><span>${label}</span></div>`;
   let html = '<div class="avopts">';
-  if(MY_PIC) html += opt(sel===''||sel===MY_PIC, `<div style="width:100%;height:100%;background:center/cover no-repeat url('${MY_PIC}')"></div>`, "useLineAvatar()", "LINE");
+  if(MY_PIC) html += opt(sel===''||sel===MY_PIC, `<div style="width:100%;height:100%;background:center/cover no-repeat url('${validPicUrl(MY_PIC)||''}')"></div>`, "useLineAvatar()", "LINE");
   html += opt(!!validPicUrl(sel)&&sel!==MY_PIC, ICONS.image, "pickAvatar()", "上傳");
   PRESET_AVATAR_ORDER.forEach(k=> html += opt(sel==='preset:'+k, PRESET_AVATARS[k], `pickPresetAvatar('${k}')`, ''));
   html += '</div>';
