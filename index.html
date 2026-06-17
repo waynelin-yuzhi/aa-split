@@ -440,6 +440,8 @@
     <div class="mc-badges" id="mcBadges"></div>
     <div class="faint" id="mcStats" style="margin-top:12px;"></div>
     <div class="spacer"></div>
+    <button id="mcEdit" class="btn block hidden" onclick="closeMemberCard();openProfile();">編輯頭像 / 個人設定</button>
+    <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeMemberCard()">關閉</button>
   </div>
 </div>
@@ -1236,6 +1238,7 @@ function openMemberCard(id){
   if(!current) return;
   const m = current.members.find(x=>x.id===id); if(!m) return;
   setAvatarEl($("#mcAvatar"), m.pic, m.name);
+  const meEdit = $("#mcEdit"); if(meEdit) meEdit.classList.toggle('hidden', !isMeMember(m));
   $("#mcName").textContent = (m.name||'?') + (isMeMember(m)?'（你）':'');
   const badgesEl = $("#mcBadges"), statsEl = $("#mcStats");
   if(isMeMember(m)){   // 自己：用本機已知徽章；其他人待後端「成員徽章」（隱私安全版）上線後填
