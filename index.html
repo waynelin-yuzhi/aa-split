@@ -344,6 +344,21 @@
   .settled-caret{color:var(--faint); font-size:12px;}
   .settled-badge{flex:0 0 auto; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-bd);
     border-radius:999px; padding:3px 9px; font-size:11.5px; font-weight:700; white-space:nowrap;}
+  .bg-item{display:flex; gap:12px; align-items:flex-start; padding:13px 2px; border-bottom:1px solid var(--line);}
+  .bg-item:last-child{border-bottom:0;}
+  .bg-ic{width:44px; height:44px; flex:0 0 auto;}
+  .bg-ic svg{width:100%; height:100%; display:block;}
+  .bg-info{flex:1; min-width:0;}
+  .bg-name{font-weight:700; font-size:15px;}
+  .bg-got{color:var(--accent); font-size:12px; font-weight:700; margin-left:6px;}
+  .bg-locked-lab{color:var(--faint); font-size:12px; margin-left:6px;}
+  .bg-how{font-size:12.5px; color:var(--muted); margin-top:3px;}
+  .bg-tiers{display:flex; gap:14px; margin-top:8px;}
+  .bg-tier{display:flex; flex-direction:column; align-items:center; gap:3px; opacity:.4;}
+  .bg-tier.on{opacity:1;}
+  .bg-tic{width:28px; height:28px;}
+  .bg-tic svg{width:100%; height:100%; display:block;}
+  .bg-tier span{font-size:10.5px; color:var(--muted); white-space:nowrap;}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -375,7 +390,7 @@
       <input id="pmNick" maxlength="20"></label>
     <label class="fld"><span>收款資訊（選填，結算時別人可一鍵複製）</span>
       <input id="pmPay" placeholder="例：國泰 700-1234567 / LINE Pay"></label>
-    <label class="fld"><span>徽章（選最多 3 個放主頁）</span>
+    <label class="fld"><span>徽章（選最多 3 個放主頁）<a onclick="openBadgeGuide()" style="color:var(--accent);cursor:pointer;font-weight:600;float:right;">圖鑑 ›</a></span>
       <div class="chips" id="pmBadges" style="margin-top:2px;"></div></label>
     <label class="fld" style="margin-bottom:8px;"><span>介面色調</span>
       <div class="theme-pick">
@@ -450,6 +465,15 @@
     <button id="mcEdit" class="btn block hidden" onclick="closeMemberCard();openProfile();">編輯頭像 / 個人設定</button>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeMemberCard()">關閉</button>
+  </div>
+</div>
+
+<div id="badgeGuideModal" class="modal hidden" style="z-index:80;">
+  <div class="modal-card">
+    <div class="modal-head"><div><div class="pm-name">徽章圖鑑</div><div class="faint">收集越多越厲害 ✨ 顏色＝等級、形狀＝種類</div></div></div>
+    <div id="badgeGuideBody"></div>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="closeBadgeGuide()">關閉</button>
   </div>
 </div>
 
@@ -1066,7 +1090,9 @@ async function renderList(){
         <div class="hs"><span class="hs-num" data-count="${st.total}" data-money="1">$0</span><span class="hs-lab">總金額</span></div>
       </div>
       <div class="hero-foot">
-        ${badges.length ? `<div class="hero-badges">${badges.map(b=>`<span class="badge" title="${esc(b.label+'：'+b.desc)}"><span class="badge-ic">${b.icon}</span></span>`).join('')}</div>` : '<span></span>'}
+        ${badges.length
+          ? `<div class="hero-badges" onclick="openBadgeGuide()" style="cursor:pointer">${badges.map(b=>`<span class="badge" title="${esc(b.label+'：'+b.desc)}"><span class="badge-ic">${b.icon}</span></span>`).join('')}</div>`
+          : `<button class="hero-invite" onclick="openBadgeGuide()">🏅 看有哪些徽章</button>`}
         <button class="hero-invite" onclick="shareApp()">🎁 揪朋友${inv?` ·已揪 ${inv}`:''}</button>
       </div>
     </div>` : '';
@@ -1104,32 +1130,62 @@ function toggleSettledList(){
   const b = $("#settledBody"); if(b) b.classList.toggle("hidden", !_showSettled);
   const c = $("#settledCaret"); if(c) c.textContent = _showSettled ? '▾' : '▸';
 }
-// 徽章（門檻可調）：元老/分帳達人/揪團王/新朋友
-const BADGE_ELDER_CUTOFF = '2026-09-01';  // 在此之前開始用＝元老
-const BADGE_MASTER_ITEMS = 20;            // 累積筆數→分帳達人
-const BADGE_KING_INVITES = 5;             // 成功邀請→揪團王
-const BADGE_FINISHER_SETTLED = 3;         // 結清帳本數→收尾高手
-const UNLOCK_THEME_INVITES = 3;           // 成功邀請→解鎖森林主題
+// ===== 徽章系統：分級（銅/銀/金），顏色＝等級、形狀＝種類 =====
+const UNLOCK_THEME_INVITES = 3;   // 成功邀請→解鎖森林主題
 function myInvites(){ return (_myBadges && Number(_myBadges.invited)) || 0; }
-// 原創多色徽記（漸層＋呼應品牌的勾勾），搭配金箔光掃動畫
-const BADGE_ICONS = {
-  elder: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bElder" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7da72"/><stop offset="1" stop-color="#df8c34"/></linearGradient></defs><path d="M9 7 7 3h2.6l1.4 2.6z" fill="#7dd3a8"/><path d="M15 7l2-4h-2.6L13 5.6z" fill="#52b389"/><circle cx="12" cy="14" r="6.4" fill="url(#bElder)"/><path d="M9.2 14.1l1.9 1.9 3.5-3.7" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  master: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bMaster" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3a8"/><stop offset="1" stop-color="#4aa6da"/></linearGradient></defs><path d="M12 2.5l2.6 5.5 6 .7-4.4 4.1 1.1 5.9L12 16l-5.3 2.7 1.1-5.9L3.4 8.7l6-.7z" fill="url(#bMaster)"/><circle cx="12" cy="11.4" r="2.1" fill="#fff" opacity=".85"/></svg>`,
-  king: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bKing" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7d35a"/><stop offset="1" stop-color="#e0813a"/></linearGradient></defs><path d="M3.5 18l-1-9 4.3 4L12 6l5.2 7 4.3-4-1 9z" fill="url(#bKing)"/><rect x="3.5" y="18" width="17" height="2.6" rx="0.7" fill="#d9772f"/><circle cx="12" cy="9" r="1.2" fill="#e67ba8"/><circle cx="6.7" cy="13" r="0.9" fill="#7dd3a8"/><circle cx="17.3" cy="13" r="0.9" fill="#7dd3a8"/></svg>`,
-  friend: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFriend" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ec84b0"/><stop offset="1" stop-color="#f0934a"/></linearGradient></defs><path d="M11 2.5c.7 4.6 2.3 6.2 6.9 6.9-4.6.7-6.2 2.3-6.9 6.9-.7-4.6-2.3-6.2-6.9-6.9 4.6-.7 6.2-2.3 6.9-6.9z" fill="url(#bFriend)"/><path d="M18.5 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" fill="#f5cd5a"/></svg>`,
-  finisher: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFinish" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3a8"/><stop offset="1" stop-color="#4aa6da"/></linearGradient></defs><path d="M8.3 13 L7 22 L12 19.3 L17 22 L15.7 13z" fill="#e0813a"/><circle cx="12" cy="10" r="7.3" fill="url(#bFinish)"/><path d="M8.6 10.2l2.3 2.3 4.4-4.7" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+// 各徽章定義：count=累積量達門檻、rank=排名(越前越高級)、single=單一
+const BADGE_DEFS = [
+  {k:'elder',    name:'元老',     kind:'rank',  tiers:[30,20,10],  how:t=>`最早加入 App 的前 ${[30,20,10][t-1]} 名`},
+  {k:'master',   name:'分帳達人', kind:'count', tiers:[20,80,200], how:t=>`累積記了 ${[20,80,200][t-1]} 筆以上`},
+  {k:'king',     name:'揪團王',   kind:'count', tiers:[5,15,30],   how:t=>`成功邀請 ${[5,15,30][t-1]} 位以上`},
+  {k:'finisher', name:'收尾高手', kind:'count', tiers:[1,10,30],   how:t=>`把 ${[1,10,30][t-1]} 本帳收到結清（銅＝第一本）`},
+  {k:'payfast',  name:'秒付俠',   kind:'count', tiers:[1,8,25],    how:t=>`在某本帳裡第一個付清，累積 ${[1,8,25][t-1]} 次`},
+  {k:'friend',   name:'新朋友',   kind:'single', how:()=>'被朋友揪一起用'}
+];
+const BADGE_DEF = Object.fromEntries(BADGE_DEFS.map(d=>[d.k,d]));
+const BADGE_LABELS = Object.fromEntries(BADGE_DEFS.map(d=>[d.k,d.name]));
+const PUBLIC_BADGES = ['elder','master','king'];   // 對外可見（上頭像角、別人看得到）；finisher/payfast/friend 自己看
+const TIER_NAME = ['', '銅', '銀', '金'];
+const TIER_GRAD = [null, ['#e8a76a','#a5673a'], ['#eef2f6','#9aa6b2'], ['#f8d96a','#d99a2e']];
+const BADGE_MOTIF = {
+  elder:`<path d="M12 17.5V11" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><path d="M12 12.6C12 9.6 10 8 7.4 8 7.4 11 9.5 12.6 12 12.6Z" fill="#fff"/><path d="M12 11C12 8 14 6.4 16.6 6.4 16.6 9.4 14.5 11 12 11Z" fill="#fff" opacity=".92"/>`,
+  master:`<path d="M12 6l1.6 3.4 3.7.5-2.7 2.6.7 3.7L12 14.9 8.7 16.8l.7-3.7-2.7-2.6 3.7-.5z" fill="#fff"/>`,
+  king:`<path d="M5.6 16l-.8-6 3.2 2.6L12 8l3 4.6 3.2-2.6-.8 6z" fill="#fff"/><rect x="5.6" y="16" width="12.8" height="1.9" rx="0.6" fill="#fff"/>`,
+  finisher:`<path d="M8.4 12.2l2.4 2.4 4.7-5" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>`,
+  payfast:`<path d="M13.2 4 L7 13.2 h3.6 l-1 6.8 6.2-9.4 h-3.8z" fill="#fff"/>`
 };
-const BADGE_LABELS = { elder:'元老', master:'分帳達人', king:'揪團王', friend:'新朋友', finisher:'收尾高手' };
-function earnedBadges(){
-  const st = _myStats||{items:0}, b = _myBadges||{}, list = [];
-  if(b.elder) list.push({k:'elder', label:'元老', desc:'最早加入的前 30 名'});
-  if((st.items||0) >= BADGE_MASTER_ITEMS) list.push({k:'master', label:'分帳達人', desc:`累積記了 ${BADGE_MASTER_ITEMS} 筆以上`});
-  if(myInvites() >= BADGE_KING_INVITES) list.push({k:'king', label:'揪團王', desc:`成功邀請 ${BADGE_KING_INVITES} 位以上`});
-  if((st.settled||0) >= BADGE_FINISHER_SETTLED) list.push({k:'finisher', label:'收尾高手', desc:`結清了 ${BADGE_FINISHER_SETTLED} 本以上`});
-  if(b.wasInvited) list.push({k:'friend', label:'新朋友', desc:'朋友揪你一起用的'});
-  return list.map(x=>({...x, icon: BADGE_ICONS[x.k]}));
+const BADGE_FRIEND_SVG = `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFriend" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ec84b0"/><stop offset="1" stop-color="#f0934a"/></linearGradient></defs><path d="M11 2.5c.7 4.6 2.3 6.2 6.9 6.9-4.6.7-6.2 2.3-6.9 6.9-.7-4.6-2.3-6.2-6.9-6.9 4.6-.7 6.2-2.3 6.9-6.9z" fill="url(#bFriend)"/><path d="M18.5 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" fill="#f5cd5a"/></svg>`;
+// 徽章圖示：分級徽章＝金屬圓牌(銅銀金)＋白色標誌；新朋友＝粉色火花(單一)；locked＝灰
+function badgeSvg(key, tier){
+  if(key==='friend') return BADGE_FRIEND_SVG;
+  const g = tier ? (TIER_GRAD[tier]||TIER_GRAD[1]) : ['#3a3f4a','#2a2f3a'];   // tier 0/未達成＝灰
+  const gid = `bg_${key}_${tier||0}`;
+  return `<svg viewBox="0 0 24 24"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${g[0]}"/><stop offset="1" stop-color="${g[1]}"/></linearGradient></defs><circle cx="12" cy="12" r="10" fill="url(#${gid})"/><circle cx="12" cy="12" r="10" fill="none" stroke="#fff" stroke-opacity="${tier?.35:.15}" stroke-width="1"/><g opacity="${tier?1:.5}">${BADGE_MOTIF[key]||''}</g></svg>`;
 }
-// 精選徽章：使用者從已解鎖中選最多 3 個放主頁（有順序）；沒選過 → 預設取前 3
+function tierFromCount(thr, n){ let t=0; for(let i=0;i<thr.length;i++){ if(n>=thr[i]) t=i+1; } return t; }
+function tierFromRank(thr, rank){ if(!rank) return 0; if(rank<=thr[2]) return 3; if(rank<=thr[1]) return 2; if(rank<=thr[0]) return 1; return 0; }
+// 我在某徽章的等級（0＝未達成）
+function myBadgeTier(k){
+  const st=_myStats||{}, b=_myBadges||{}, d=BADGE_DEF[k];
+  if(k==='elder')    return b.elderRank ? tierFromRank(d.tiers, b.elderRank) : (b.elder?1:0);
+  if(k==='master')   return tierFromCount(d.tiers, st.items||0);
+  if(k==='king')     return tierFromCount(d.tiers, myInvites());
+  if(k==='finisher') return tierFromCount(d.tiers, st.settled||0);
+  if(k==='payfast')  return tierFromCount(d.tiers, st.payfast||0);
+  if(k==='friend')   return b.wasInvited ? 1 : 0;
+  return 0;
+}
+function earnedBadges(){
+  const list=[];
+  for(const d of BADGE_DEFS){
+    const t = myBadgeTier(d.k);
+    if(t>0) list.push({ k:d.k, tier:t, label:d.name,
+      desc: d.kind==='single' ? d.how() : `${TIER_NAME[t]}・${d.how(t)}`,
+      icon: badgeSvg(d.k, d.kind==='single'?0:t) });
+  }
+  return list;
+}
+// 精選徽章：從已解鎖選最多 3 個放主頁；沒選過→預設取前 3
 function featuredBadges(){
   const all = earnedBadges();
   const feat = (_myBadges && Array.isArray(_myBadges.featured)) ? _myBadges.featured : [];
@@ -1138,11 +1194,30 @@ function featuredBadges(){
   const picked = feat.map(k=>byKey[k]).filter(Boolean);
   return picked.length ? picked.slice(0,3) : all.slice(0,3);
 }
-// 頭像右下角只放「公開」徽章（元老/分帳達人/揪團王）；新朋友、收尾高手不對外（後者目前只自己看）
+// 頭像右下角只放「公開」徽章（含等級）；自己看的 finisher/payfast/friend 不對外
 function myFeaturedTop(){
-  const pub = featuredBadges().find(b=>b.k!=='friend' && b.k!=='finisher');
-  return pub ? pub.k : null;
+  const pub = featuredBadges().find(b=>PUBLIC_BADGES.includes(b.k));
+  return pub ? {k:pub.k, tier:pub.tier} : null;
 }
+// 徽章圖鑑：列出全部徽章＋銅銀金門檻＋你的進度（沒達成的灰，勾起「還想拿」）
+function openBadgeGuide(){
+  const html = BADGE_DEFS.map(d=>{
+    const myT = myBadgeTier(d.k);
+    if(d.kind==='single'){
+      return `<div class="bg-item"><div class="bg-ic">${badgeSvg(d.k,0)}</div><div class="bg-info">
+        <div class="bg-name">${d.name}${myT?'<span class="bg-got">✓ 已獲得</span>':'<span class="bg-locked-lab">未解鎖</span>'}</div>
+        <div class="bg-how">${d.how()}</div></div></div>`;
+    }
+    const tiers = [1,2,3].map(t=>`<div class="bg-tier ${myT>=t?'on':''}"><div class="bg-tic">${badgeSvg(d.k, myT>=t?t:0)}</div><span>${TIER_NAME[t]}・${d.kind==='rank'?'前'+d.tiers[t-1]:d.tiers[t-1]}</span></div>`).join('');
+    return `<div class="bg-item"><div class="bg-ic">${badgeSvg(d.k, myT||1)}</div><div class="bg-info">
+      <div class="bg-name">${d.name}${myT?`<span class="bg-got">${TIER_NAME[myT]}級</span>`:'<span class="bg-locked-lab">未解鎖</span>'}</div>
+      <div class="bg-how">${d.how(Math.max(1,myT))}</div>
+      <div class="bg-tiers">${tiers}</div></div></div>`;
+  }).join('');
+  $("#badgeGuideBody").innerHTML = html;
+  $("#badgeGuideModal").classList.remove('hidden');
+}
+function closeBadgeGuide(){ $("#badgeGuideModal").classList.add('hidden'); }
 // 數字往上跳的動畫（IG 追蹤數那種爬升感）
 function countUp(el, target, isMoney){
   const dur = 900, start = performance.now();
@@ -1279,10 +1354,10 @@ function iAmOwner(){
   const first = current.members && current.members[0];
   return !!(first && first.uid===MY_UID);
 }
-function memberBadgeTop(m){   // 頭像右下角的第一順位徽章：自己用 featured、別人用後端 top
+function memberBadgeTop(m){   // 頭像右下角的第一順位徽章 {k,tier}：自己用 featured、別人用後端 top
   if(isMeMember(m)) return myFeaturedTop();
   const mb = m.uid ? _memberBadges[m.uid] : null;
-  return mb && mb.top ? mb.top : null;
+  return (mb && mb.top) ? {k:mb.top, tier:(mb.topTier||1)} : null;
 }
 function memberAvatarHTML(m){
   const me = isMeMember(m);
@@ -1290,7 +1365,7 @@ function memberAvatarHTML(m){
   const online = !!(m.uid && _onlineUids.has(m.uid));
   const top = memberBadgeTop(m);
   return `<div class="mav ${me?'me':''}" data-uid="${esc(m.uid||'')}" onclick="openMemberCard('${m.id}')">
-    <div class="mav-pic" style="${a.style}">${a.inner}${online?'<span class="mav-dot"></span>':''}${top?`<span class="mav-bdg">${BADGE_ICONS[top]}</span>`:''}</div>
+    <div class="mav-pic" style="${a.style}">${a.inner}${online?'<span class="mav-dot"></span>':''}${top?`<span class="mav-bdg">${badgeSvg(top.k, top.tier)}</span>`:''}</div>
     <div class="mav-name">${esc(m.name||'?')}${me?'<b>·你</b>':''}</div>
   </div>`;
 }
@@ -1308,9 +1383,9 @@ function openMemberCard(id){
   } else {
     const mb = m.uid ? _memberBadges[m.uid] : null;
     const keys = [];
-    if(mb){ if(mb.elder) keys.push('elder'); if(mb.master) keys.push('master'); if(mb.king) keys.push('king'); }
+    if(mb){ if(mb.elder) keys.push(['elder', mb.elderTier||1]); if(mb.master) keys.push(['master', mb.masterTier||1]); if(mb.king) keys.push(['king', mb.kingTier||1]); }
     badgesEl.innerHTML = keys.length
-      ? keys.map(k=>`<span class="badge"><span class="badge-ic">${BADGE_ICONS[k]}</span>${BADGE_LABELS[k]}</span>`).join('')
+      ? keys.map(([k,t])=>`<span class="badge"><span class="badge-ic">${badgeSvg(k,t)}</span>${BADGE_LABELS[k]}</span>`).join('')
       : '<span class="faint">還沒有公開徽章</span>';
     statsEl.textContent = mb ? `你們一起分帳 ${mb.mutual} 次` : (m.uid ? '已用 LINE 加入' : '手動加入的名字');
   }
@@ -1655,6 +1730,7 @@ async function renameMember(id, ev){
 }
 async function removeMember(id, ev){
   ev.stopPropagation();
+  if(!iAmOwner()){ toast("只有建立這本帳的人可以移除成員"); return; }
   const p = current.members.find(m=>m.id===id);
   if(!await uiConfirm(`移除成員「${p?p.name:""}」？他分攤或付款的項目會一併調整。`, {danger:true})) return;
   const nm = p?p.name:"";
@@ -1676,13 +1752,14 @@ function openMembers(){
 function closeMembers(){ $("#membersModal").classList.add("hidden"); if(view==="edit") renderEdit(false); }
 function renderMembersModal(){
   const m = current.members || [];
+  const owner = iAmOwner();   // 合併、移除成員只有建立者可用
   const joined = m.filter(p=>p.uid).length;
   $("#mmCount").textContent = m.length ? `${m.length} 名・${joined} 已用 LINE 加入` : "";
-  const mm = $("#mmMerge"); if(mm) mm.classList.toggle("hidden", !(iAmOwner() && m.length>=2));   // 合併只有建立者可用
+  const mm = $("#mmMerge"); if(mm) mm.classList.toggle("hidden", !(owner && m.length>=2));
   $("#mmList").innerHTML = m.length
     ? m.map(p=>{
         const on = !!p.uid, me = p.uid===MY_UID;
-        return `<span class="chip mchip ${me?'me':''}" title="${on?'已用 LINE 加入':'你預設的名字，還沒人認領'}"><span class="mdot ${on?'on':''}"></span><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${me?'（我）':''}</span> <span class="x" onclick="removeMember('${p.id}',event)">✕</span></span>`;
+        return `<span class="chip mchip ${me?'me':''}" title="${on?'已用 LINE 加入':'你預設的名字，還沒人認領'}"><span class="mdot ${on?'on':''}"></span><span onclick="renameMember('${p.id}',event)" style="cursor:pointer;">${esc(p.name)}${me?'（我）':''}</span>${owner?` <span class="x" onclick="removeMember('${p.id}',event)">✕</span>`:''}</span>`;
       }).join("")
     : `<span class="faint">還沒有成員，在下面輸入名字加入。</span>`;
   $("#mmLegend").innerHTML = m.length
