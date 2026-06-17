@@ -45,5 +45,5 @@ helper：`line_uid / _is_member / _is_elder / _elder_rank / _touch_user / _rate_
 ## Migration 流程
 - 新 migration 放 `supabase/migrations/<timestamp>_name.sql` → `~/.local/bin/supabase db push`。
 - CLI 在 `~/.local/bin/`（`supabase` + `supabase-go` 兩支都要）、已 login + link。
-- **舊的手寫 `supabase/migration_*.sql`（根目錄、非 migrations/）不被 CLI 追蹤**，只當歷史參考；同名函式以最新一次 `create or replace` 為準。
+- **早期手動部署的 SQL 已歸檔到 `supabase/_legacy/`**（schema*.sql + 舊 migration_*.sql），不被 CLI 追蹤、只當歷史/地基參考；同名函式以最新一次 `create or replace`（多在 migrations/）為準。詳見 `supabase/_legacy/README.md`。
 - **新增欄位/參數用 `default null`、向後相容**（舊前端少帶參數仍可解析）。

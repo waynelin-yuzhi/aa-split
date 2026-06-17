@@ -14,6 +14,8 @@
 1. 寫 `supabase/migrations/<timestamp>_name.sql`（檔頭寫清楚改什麼、為什麼）。
 2. `~/.local/bin/supabase db push`（`db push` 成功＝Postgres 已驗證語法/函式體）。
 3. 驗證：REST `curl .../rest/v1/rpc/<fn>`（壞 token 應回 unauthorized/401；簽名應一致）；Edge Function 用 `supabase functions deploy <name> --no-verify-jwt`。
+- 早期手動部署的 SQL 在 `supabase/_legacy/`（不被 CLI 追蹤、歷史/地基參考）。
+- **進階（可選）重現性**：目前「地基在 `_legacy/`、增量在 `migrations/`」，全新 DB 無法只靠 `db push` 一鍵重建；要達標需把地基補成 migrations/ 最前面的正式 migration。線上 DB 已存在＋Supabase 自動備份，故不急。
 
 ## 部署
 - `git commit` + `git push`（GitHub Pages 自動上線）。commit message 結尾加 `Co-Authored-By: Claude ...` trailer。
