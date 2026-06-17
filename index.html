@@ -120,17 +120,17 @@
   .empty{text-align:center; color:var(--muted); padding:48px 20px;}
   .empty .big{font-size:40px; margin-bottom:10px;}
   /* list rows */
-  .hero{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:15px 14px; margin-bottom:14px; text-align:center;}
-  .hero-label{font-size:13px; color:var(--muted); margin-bottom:11px;}
+  .hero{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:11px 13px; margin-bottom:14px; text-align:center;}
   .hero-stats{display:flex; justify-content:space-around; gap:8px;}
-  .hero .hs{display:flex; flex-direction:column; align-items:center; gap:3px; flex:1; min-width:0;}
-  .hero .hs-num{font-size:24px; font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; line-height:1.1;}
-  .hero .hs-lab{font-size:12px; color:var(--muted);}
-  .hero-badges{display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:13px;}
-  .hero .badge{position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:5px; font-size:12.5px;
-    background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:999px; padding:4px 11px 4px 7px; font-weight:650;}
+  .hero .hs{display:flex; flex-direction:column; align-items:center; gap:2px; flex:1; min-width:0;}
+  .hero .hs-num{font-size:21px; font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; line-height:1.05;}
+  .hero .hs-lab{font-size:11.5px; color:var(--muted);}
+  .hero-foot{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:9px;}
+  .hero-badges{display:flex; flex-wrap:wrap; gap:6px; min-width:0;}
+  .hero .badge{position:relative; overflow:hidden; display:inline-flex; align-items:center; justify-content:center;
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:4px; font-weight:650;}
   .hero .badge-ic{display:inline-flex; flex:0 0 auto;}
-  .hero .badge-ic svg{width:19px; height:19px; display:block;}
+  .hero .badge-ic svg{width:20px; height:20px; display:block;}
   .hero .badge::after{content:''; position:absolute; inset:0; pointer-events:none;
     background:linear-gradient(110deg, transparent 34%, rgba(255,255,255,.75) 47%, rgba(255,224,140,.55) 53%, transparent 66%);
     transform:translateX(-130%); animation:badgeShine 3.4s ease-in-out infinite;}
@@ -139,7 +139,7 @@
   .hero .badge:nth-child(4)::after{animation-delay:1.5s;}
   @keyframes badgeShine{0%,55%{transform:translateX(-130%);} 78%,100%{transform:translateX(130%);}}
   @media (prefers-reduced-motion: reduce){ .hero .badge::after{animation:none;} }
-  .hero-invite{margin-top:13px; background:transparent; border:0; color:var(--accent); font-size:13.5px; font-weight:650; cursor:pointer;}
+  .hero-invite{background:transparent; border:0; color:var(--accent); font-size:12.5px; font-weight:650; cursor:pointer; white-space:nowrap; flex:0 0 auto; padding:0;}
   .listrow{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--panel);
     border:1px solid var(--line); border-radius:14px; margin-bottom:10px; cursor:pointer;}
   .listrow:active{background:var(--panel2);}
@@ -305,6 +305,30 @@
     background:var(--accent); color:var(--on-accent); font-size:32px; line-height:1; border:0; cursor:pointer; z-index:40;
     display:flex; align-items:center; justify-content:center; box-shadow:0 10px 28px rgba(0,0,0,.45);}
   .fab-center:active{transform:translateX(-50%) scale(.95);}
+  /* 成員臨場感：帳本內的大頭貼名冊（橫向滑）+ 在線綠點 + 角徽 */
+  .members-strip{display:flex; gap:13px; overflow-x:auto; margin:-2px 0 14px; padding:2px; -webkit-overflow-scrolling:touch;}
+  .members-strip::-webkit-scrollbar{height:0;}
+  .mav{display:flex; flex-direction:column; align-items:center; gap:6px; flex:0 0 auto; width:56px; cursor:pointer;}
+  .mav:active{transform:translateY(1px);}
+  .mav-pic{position:relative; width:48px; height:48px; border-radius:50%; background:var(--panel2) center/cover no-repeat;
+    display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:19px; border:2px solid var(--line); box-shadow:0 2px 6px rgba(0,0,0,.25);}
+  .mav.me .mav-pic{border-color:var(--accent);}
+  .mav-name{font-size:12px; color:var(--ink); white-space:nowrap; max-width:56px; overflow:hidden; text-overflow:ellipsis; text-align:center;}
+  .mav-name b{color:var(--accent); font-weight:650;}
+  .mav-dot{position:absolute; top:0; right:0; width:12px; height:12px; border-radius:50%; background:#3ad07a; border:2px solid var(--bg);}
+  .mav-bdg{position:absolute; bottom:-3px; right:-5px; width:22px; height:22px; border-radius:50%; background:var(--panel); border:2px solid var(--bg); display:flex; align-items:center; justify-content:center;}
+  .mav-bdg svg{width:14px; height:14px; display:block;}
+  .mc-badges{display:flex; flex-wrap:wrap; justify-content:center; gap:7px; margin-top:14px;}
+  .mc-badges .badge{position:relative; display:inline-flex; align-items:center; gap:5px; font-size:12.5px;
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:999px; padding:5px 12px 5px 8px; font-weight:650;}
+  .mc-badges .badge-ic svg{width:19px; height:19px; display:block;}
+  .pickbadge{position:relative; display:inline-flex; align-items:center; gap:5px; font-size:13px; cursor:pointer;
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:999px; padding:6px 12px 6px 8px; font-weight:600;}
+  .pickbadge.on{border-color:var(--accent); background:var(--accent-soft);}
+  .pickbadge .badge-ic{display:inline-flex;}
+  .pickbadge .badge-ic svg{width:18px; height:18px; display:block;}
+  .pickbadge .pk-ord{position:absolute; top:-6px; left:-6px; width:18px; height:18px; border-radius:50%; background:var(--accent);
+    color:var(--on-accent); font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center;}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -334,6 +358,8 @@
     <label class="fld"><span>我的收款資訊（給人轉帳用，選填）</span>
       <input id="pmPay" placeholder="例：國泰 700-1234567 / LINE Pay 連結"></label>
     <div class="faint" style="margin:-2px 2px 14px;">設定後，你建立或加入的帳本會自動帶上，結算時別人看得到、可一鍵複製。</div>
+    <label class="fld"><span>我的徽章（選最多 3 個放主頁；第一個會出現在帳本你的頭像上）</span>
+      <div class="chips" id="pmBadges" style="margin-top:2px;"></div></label>
     <button class="btn block" onclick="saveProfile()">儲存</button>
     <hr class="sep">
     <label class="fld"><span>介面色調（只改你自己的）</span>
@@ -375,6 +401,17 @@
     <div id="histList" style="max-height:60vh;overflow:auto;"></div>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeHistory()">關閉</button>
+  </div>
+</div>
+
+<div id="memberCardModal" class="modal hidden">
+  <div class="modal-card" style="max-width:320px;text-align:center;">
+    <div class="avatar-lg" id="mcAvatar" style="width:64px;height:64px;font-size:26px;margin:0 auto 12px;"></div>
+    <div class="pm-name" id="mcName"></div>
+    <div class="mc-badges" id="mcBadges"></div>
+    <div class="faint" id="mcStats" style="margin-top:12px;"></div>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="closeMemberCard()">關閉</button>
   </div>
 </div>
 
@@ -644,7 +681,7 @@ const Store = {
   },
   async create(g){
     const row = await rpc("g_create", { p_access_token: ACCESS_TOKEN, p_title:g.title||null,
-      p_event_date:g.date||null, p_currency:g.currency||"TWD", p_my_name: MY_NAME||"我", p_my_member_id: uid() });
+      p_event_date:g.date||null, p_currency:g.currency||"TWD", p_my_name: MY_NAME||"我", p_my_member_id: uid(), p_my_pic: MY_PIC||null });
     return rowToGathering(row);
   },
   async save(g){
@@ -660,7 +697,7 @@ const Store = {
   },
   async join(id, token){  // 邀請流程：把我加進去
     const row = await rpc("g_join", { p_id:id, p_token:token, p_access_token: ACCESS_TOKEN,
-      p_my_name: MY_NAME||"我", p_my_member_id: uid() });
+      p_my_name: MY_NAME||"我", p_my_member_id: uid(), p_my_pic: MY_PIC||null });
     return rowToGathering(row, token);
   },
   async getBySlug(slug){  // 短連結讀取：成員可讀；或持邀請 slug 可讀（尚未加入）
@@ -670,18 +707,20 @@ const Store = {
   },
   async joinBySlug(slug){ // 短連結加入：把我加進去（新成員）
     const row = await rpc("g_join_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN,
-      p_my_name: MY_NAME||"我", p_my_member_id: uid() });
+      p_my_name: MY_NAME||"我", p_my_member_id: uid(), p_my_pic: MY_PIC||null });
     return rowToGathering(row);
   },
   async claimBySlug(slug, memberId){ // 認領：把我綁到 host 預建的某個名字
-    const row = await rpc("g_claim_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN, p_member_id: memberId });
+    const row = await rpc("g_claim_by_slug", { p_slug:slug, p_access_token: ACCESS_TOKEN, p_member_id: memberId, p_my_pic: MY_PIC||null });
     return rowToGathering(row);
   },
   async remove(id){ await rpc("g_delete", { p_id:id, p_access_token: ACCESS_TOKEN }); },
   async getOrder(){ const {data,error}=await sb.rpc("g_get_prefs",{p_access_token:ACCESS_TOKEN}); if(error) throw error; return Array.isArray(data)?data:[]; }, // 跨裝置排序（回 jsonb 陣列，不可用 rpc() 解包）
   async setOrder(ids){ await rpc("g_set_order", { p_access_token: ACCESS_TOKEN, p_order: ids }); },
   async recordReferral(inviter){ await rpc("g_record_referral", { p_access_token: ACCESS_TOKEN, p_inviter: inviter }); },
-  async getBadges(){ const {data,error}=await sb.rpc("g_my_badges",{p_access_token:ACCESS_TOKEN}); if(error) throw error; return data||{}; }
+  async getBadges(){ const {data,error}=await sb.rpc("g_my_badges",{p_access_token:ACCESS_TOKEN}); if(error) throw error; return data||{}; },
+  async memberBadges(id){ const {data,error}=await sb.rpc("g_member_badges",{p_access_token:ACCESS_TOKEN, p_id:id}); if(error) throw error; return Array.isArray(data)?data:[]; }, // 同帳本成員公開徽章（回陣列，不可用 rpc() 解包）
+  async setFeatured(keys){ await rpc("g_set_featured", { p_access_token: ACCESS_TOKEN, p_badges: keys }); }
 };
 
 /* =========================================================================
@@ -777,8 +816,25 @@ function openProfile(){
   const av = $("#pmAvatar");
   if(MY_PIC){ av.style.backgroundImage = `url("${MY_PIC}")`; av.textContent=""; } else { av.textContent = (MY_NAME||"我").slice(0,1); }
   $("#pmPay").value = pf.payInfo || "";
+  _featSel = (_myBadges && Array.isArray(_myBadges.featured)) ? _myBadges.featured.slice() : [];
+  renderBadgePicker();
   markThemeSel();
   $("#profileModal").classList.remove("hidden");
+}
+function renderBadgePicker(){
+  const wrap = $("#pmBadges"); if(!wrap) return;
+  const all = earnedBadges();
+  if(!all.length){ wrap.innerHTML = '<span class="faint">記了帳、揪了朋友，就會解鎖徽章</span>'; return; }
+  wrap.innerHTML = all.map(b=>{
+    const idx = _featSel.indexOf(b.k);
+    return `<span class="pickbadge ${idx>=0?'on':''}" onclick="toggleFeat('${b.k}')">${idx>=0?`<span class="pk-ord">${idx+1}</span>`:''}<span class="badge-ic">${b.icon}</span>${b.label}</span>`;
+  }).join('');
+}
+function toggleFeat(k){
+  const i = _featSel.indexOf(k);
+  if(i>=0) _featSel.splice(i,1);
+  else { if(_featSel.length>=3){ toast('最多選 3 個放主頁'); return; } _featSel.push(k); }
+  renderBadgePicker();
 }
 function closeProfile(){ $("#profileModal").classList.add("hidden"); }
 /* 介面色調：個人偏好，存本機；冷調(預設) / 暖調 / 森林(邀請解鎖) */
@@ -799,10 +855,13 @@ function markThemeSel(){
   const fLab = $("#forestLab"); if(fLab) fLab.textContent = fLocked ? '森林 🔒' : '森林';
   const fHint = $("#forestHint"); if(fHint) fHint.textContent = fLocked ? `森林主題：邀請 ${UNLOCK_THEME_INVITES} 位朋友解鎖（目前 ${myInvites()} 位）` : '';
 }
-function saveProfile(){
+async function saveProfile(){
   const pf = myProfile();
   pf.payInfo = $("#pmPay").value.trim();
   saveMyProfile(pf);
+  // 精選徽章存雲端（跨裝置 + 讓同帳本的人看到你的第一順位）
+  if(CLOUD && ACCESS_TOKEN){ try{ await Store.setFeatured(_featSel); }catch(e){ console.error(e); } }
+  if(_myBadges) _myBadges.featured = _featSel.slice();
   // 套到目前聚會「我」的成員（覆寫成最新值）並存雲端
   if(current && MY_UID){
     const me = (current.members||[]).find(x=>x.uid===MY_UID);
@@ -816,7 +875,10 @@ let current = null;         // 編輯中的聚會
 let editDraftItem = null;   // 正在新增/編輯的項目
 let _coverAdjust = false;   // 封面調整位置模式
 let _myStats = null;        // 個人成就統計（Store.list 算出）
-let _myBadges = null;       // 徽章/邀請數（g_my_badges）
+let _myBadges = null;       // 徽章/邀請數/精選（g_my_badges）
+let _onlineUids = new Set(); // 此刻正打開這本帳的成員 uid（Realtime presence）
+let _memberBadges = {};      // {uid:{elder,master,king,top,mutual}}（g_member_badges）
+let _featSel = [];           // 個人設定裡暫存的精選徽章選擇
 let editDraftAdj = null;     // 正在新增/編輯的服務費/折扣
 let editDraftTransfer = null; // 正在新增/編輯的轉帳/還款
 
@@ -894,18 +956,19 @@ async function renderList(){
   const ordered = applySavedOrder(gs);
   const grip = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="5" cy="4" r="1.3"/><circle cx="11" cy="4" r="1.3"/><circle cx="5" cy="8" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg>`;
   const st = _myStats || {items:0, total:0, friends:0};
-  const badges = earnedBadges();
+  const badges = featuredBadges();
   const inv = (_myBadges && Number(_myBadges.invited)) || 0;
   const hero = st.items>0 ? `
     <div class="hero">
-      <div class="hero-label">你用「欸，算一下！」已經</div>
       <div class="hero-stats">
         <div class="hs"><span class="hs-num" data-count="${st.items}">0</span><span class="hs-lab">筆帳</span></div>
         <div class="hs"><span class="hs-num" data-count="${st.friends}">0</span><span class="hs-lab">位朋友</span></div>
         <div class="hs"><span class="hs-num" data-count="${st.total}" data-money="1">$0</span><span class="hs-lab">總金額</span></div>
       </div>
-      ${badges.length ? `<div class="hero-badges">${badges.map(b=>`<span class="badge" title="${esc(b.desc)}"><span class="badge-ic">${b.icon}</span>${b.label}</span>`).join('')}</div>` : ''}
-      <button class="hero-invite" onclick="shareApp()">🎁 揪朋友一起用${inv?`・已揪 ${inv} 位`:''}</button>
+      <div class="hero-foot">
+        ${badges.length ? `<div class="hero-badges">${badges.map(b=>`<span class="badge" title="${esc(b.label+'：'+b.desc)}"><span class="badge-ic">${b.icon}</span></span>`).join('')}</div>` : '<span></span>'}
+        <button class="hero-invite" onclick="shareApp()">🎁 揪朋友${inv?` ·已揪 ${inv}`:''}</button>
+      </div>
     </div>` : '';
   $("#main").innerHTML = hero + `<div id="listWrap">` + ordered.map(g => { const lc = parseCover(g.cover); return `
     <div class="listrow ${lc?'has-cover':''}" data-id="${g.id}" onclick="openGathering('${g.id}')"${lc?` style="background-image:linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.62)), url('${lc.url}'); background-size:cover; background-position:center, center ${lc.pos}%;"`:''}>
@@ -934,6 +997,7 @@ const BADGE_ICONS = {
   king: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bKing" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7d35a"/><stop offset="1" stop-color="#e0813a"/></linearGradient></defs><path d="M3.5 18l-1-9 4.3 4L12 6l5.2 7 4.3-4-1 9z" fill="url(#bKing)"/><rect x="3.5" y="18" width="17" height="2.6" rx="0.7" fill="#d9772f"/><circle cx="12" cy="9" r="1.2" fill="#e67ba8"/><circle cx="6.7" cy="13" r="0.9" fill="#7dd3a8"/><circle cx="17.3" cy="13" r="0.9" fill="#7dd3a8"/></svg>`,
   friend: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFriend" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ec84b0"/><stop offset="1" stop-color="#f0934a"/></linearGradient></defs><path d="M11 2.5c.7 4.6 2.3 6.2 6.9 6.9-4.6.7-6.2 2.3-6.9 6.9-.7-4.6-2.3-6.2-6.9-6.9 4.6-.7 6.2-2.3 6.9-6.9z" fill="url(#bFriend)"/><path d="M18.5 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" fill="#f5cd5a"/></svg>`
 };
+const BADGE_LABELS = { elder:'元老', master:'分帳達人', king:'揪團王', friend:'新朋友' };
 function earnedBadges(){
   const st = _myStats||{items:0}, b = _myBadges||{}, list = [];
   if(b.firstSeen && String(b.firstSeen) < BADGE_ELDER_CUTOFF) list.push({k:'elder', label:'元老', desc:'早期就開始用的元老'});
@@ -941,6 +1005,20 @@ function earnedBadges(){
   if(myInvites() >= BADGE_KING_INVITES) list.push({k:'king', label:'揪團王', desc:`成功邀請 ${BADGE_KING_INVITES} 位以上`});
   if(b.wasInvited) list.push({k:'friend', label:'新朋友', desc:'朋友揪你一起用的'});
   return list.map(x=>({...x, icon: BADGE_ICONS[x.k]}));
+}
+// 精選徽章：使用者從已解鎖中選最多 3 個放主頁（有順序）；沒選過 → 預設取前 3
+function featuredBadges(){
+  const all = earnedBadges();
+  const feat = (_myBadges && Array.isArray(_myBadges.featured)) ? _myBadges.featured : [];
+  if(!feat.length) return all.slice(0,3);
+  const byKey = Object.fromEntries(all.map(b=>[b.k,b]));
+  const picked = feat.map(k=>byKey[k]).filter(Boolean);
+  return picked.length ? picked.slice(0,3) : all.slice(0,3);
+}
+// 頭像右下角只放「公開」徽章（元老/分帳達人/揪團王），新朋友不對外
+function myFeaturedTop(){
+  const pub = featuredBadges().find(b=>b.k!=='friend');
+  return pub ? pub.k : null;
 }
 // 數字往上跳的動畫（IG 追蹤數那種爬升感）
 function countUp(el, target, isMoney){
@@ -1022,6 +1100,7 @@ async function newGathering(){
   try{ created = await Store.create(g); }
   catch(e){ console.error(e); toast("建立失敗，檢查網路"); return; }
   current = created;
+  _memberBadges = {};
   applyProfileToCurrent();
   logHistory("建立了這本帳本");
   persistCurrent();
@@ -1035,9 +1114,55 @@ async function openGathering(id){
   catch(e){ console.error(e); current = null; }
   if(!current){ toast("讀取失敗"); return renderList(); }
   if(applyProfileToCurrent()) persistCurrent();
+  await loadMemberBadges(current.id);
   subscribeRealtime(current.id);
   renderEdit(false);
 }
+
+/* 成員頭像名冊（帳本內臨場感）+ 點頭像看 profile */
+const AV_COLORS = ['#4a90d9','#e0813a','#e67ba8','#4f8f5a','#9b6fd4','#3aa6a6','#d9694a','#c79a3a'];
+function avColor(name){ const s=String(name||''); let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return AV_COLORS[h%AV_COLORS.length]; }
+function isMeMember(m){ return !!((MY_UID && m.uid===MY_UID) || (getMe()===m.id)); }
+function memberBadgeTop(m){   // 頭像右下角的第一順位徽章：自己用 featured、別人用後端 top
+  if(isMeMember(m)) return myFeaturedTop();
+  const mb = m.uid ? _memberBadges[m.uid] : null;
+  return mb && mb.top ? mb.top : null;
+}
+function memberAvatarHTML(m){
+  const me = isMeMember(m);
+  const style = m.pic ? `background-image:url('${esc(m.pic)}')` : `background:${avColor(m.name)}`;
+  const initial = m.pic ? '' : esc((m.name||'?').slice(0,1));
+  const online = !!(m.uid && _onlineUids.has(m.uid));
+  const top = memberBadgeTop(m);
+  return `<div class="mav ${me?'me':''}" data-uid="${esc(m.uid||'')}" onclick="openMemberCard('${m.id}')">
+    <div class="mav-pic" style="${style}">${initial}${online?'<span class="mav-dot"></span>':''}${top?`<span class="mav-bdg">${BADGE_ICONS[top]}</span>`:''}</div>
+    <div class="mav-name">${esc(m.name||'?')}${me?'<b>·你</b>':''}</div>
+  </div>`;
+}
+function openMemberCard(id){
+  if(!current) return;
+  const m = current.members.find(x=>x.id===id); if(!m) return;
+  const av = $("#mcAvatar");
+  if(m.pic){ av.style.backgroundColor=''; av.style.backgroundImage=`url('${m.pic}')`; av.textContent=''; }
+  else { av.style.backgroundImage='none'; av.style.backgroundColor=avColor(m.name); av.textContent=(m.name||'?').slice(0,1); }
+  $("#mcName").textContent = (m.name||'?') + (isMeMember(m)?'（你）':'');
+  const badgesEl = $("#mcBadges"), statsEl = $("#mcStats");
+  if(isMeMember(m)){   // 自己：用本機已知徽章；其他人待後端「成員徽章」（隱私安全版）上線後填
+    const bs = earnedBadges();
+    badgesEl.innerHTML = bs.length ? bs.map(b=>`<span class="badge"><span class="badge-ic">${b.icon}</span>${b.label}</span>`).join('') : '<span class="faint">還沒有徽章</span>';
+    statsEl.textContent = _myStats ? `${_myStats.items} 筆帳 ・ ${_myStats.friends} 位朋友` : '';
+  } else {
+    const mb = m.uid ? _memberBadges[m.uid] : null;
+    const keys = [];
+    if(mb){ if(mb.elder) keys.push('elder'); if(mb.master) keys.push('master'); if(mb.king) keys.push('king'); }
+    badgesEl.innerHTML = keys.length
+      ? keys.map(k=>`<span class="badge"><span class="badge-ic">${BADGE_ICONS[k]}</span>${BADGE_LABELS[k]}</span>`).join('')
+      : '<span class="faint">還沒有公開徽章</span>';
+    statsEl.textContent = mb ? `你們一起分帳 ${mb.mutual} 次` : (m.uid ? '已用 LINE 加入' : '手動加入的名字');
+  }
+  $("#memberCardModal").classList.remove('hidden');
+}
+function closeMemberCard(){ $("#memberCardModal").classList.add('hidden'); }
 
 /* =========================================================================
  * 畫面：編輯聚會
@@ -1078,6 +1203,7 @@ function renderEdit(isNew){
         <span class="gsum-meta">${m.length} 人 ・ 總額 <b class="num">${money(tot)}</b></span>
       </div>
     </div>
+    ${m.length ? `<div class="members-strip">${m.map(memberAvatarHTML).join('')}</div>` : ''}
 
     <div class="quickbar">
       <button class="qbtn" onclick="openMembers()"><span class="qi">${ICONS.members}</span>成員 ${m.length}</button>
@@ -1262,12 +1388,39 @@ function subscribeRealtime(id){
   if(rtChannel && rtGid === id) return;      // 已訂閱同一場
   unsubscribeRealtime();
   rtGid = id;
-  rtChannel = sb.channel("g:" + id);
-  rtChannel.on("broadcast", { event: "changed" }, () => onRemoteChange(id)).subscribe();
+  rtChannel = sb.channel("g:" + id, { config: { presence: { key: MY_UID || ('anon_'+uid()) } } });
+  rtChannel
+    .on("broadcast", { event: "changed" }, () => onRemoteChange(id))
+    .on("presence", { event: "sync" }, () => refreshPresence())
+    .subscribe((status)=>{ if(status==='SUBSCRIBED'){ try{ rtChannel.track({ uid: MY_UID, at: Date.now() }); }catch(e){} } });
 }
 function unsubscribeRealtime(){
   if(rtChannel){ try{ sb.removeChannel(rtChannel); }catch(e){} }
-  rtChannel = null; rtGid = null;
+  rtChannel = null; rtGid = null; _onlineUids = new Set();
+}
+// 在線狀態：誰此刻正打開這本帳 → 即時更新頭像綠點（不重畫整頁，避免打斷輸入/捲動）
+function refreshPresence(){
+  if(!rtChannel) return;
+  let st = {}; try{ st = rtChannel.presenceState(); }catch(e){ return; }
+  const set = new Set();
+  Object.values(st).forEach(arr => (arr||[]).forEach(p => { if(p && p.uid) set.add(p.uid); }));
+  _onlineUids = set;
+  updatePresenceDots();
+}
+function updatePresenceDots(){
+  document.querySelectorAll('.members-strip .mav').forEach(el=>{
+    const u = el.dataset.uid, pic = el.querySelector('.mav-pic'); if(!pic) return;
+    let dot = pic.querySelector('.mav-dot');
+    const on = !!(u && _onlineUids.has(u));
+    if(on && !dot){ dot = document.createElement('span'); dot.className = 'mav-dot'; pic.appendChild(dot); }
+    else if(!on && dot){ dot.remove(); }
+  });
+}
+async function loadMemberBadges(id){   // 開帳本時抓同帳本成員的公開徽章（給角徽 + profile 卡用）
+  _memberBadges = {};
+  if(!CLOUD || !ACCESS_TOKEN) return;
+  try{ const arr = await Store.memberBadges(id); _memberBadges = Object.fromEntries(arr.map(x=>[x.uid,x])); }
+  catch(e){ console.error('memberBadges', e); }
 }
 function broadcastChanged(id){
   if(rtChannel && rtGid === id){
