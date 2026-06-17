@@ -799,9 +799,12 @@ function saveMyProfile(p){ if(MY_UID) localStorage.setItem("aa_profile_"+MY_UID,
 function applyProfileToCurrent(){
   if(!current || !MY_UID) return false;
   const me = (current.members||[]).find(x=>x.uid===MY_UID);
+  if(!me) return false;
+  let changed = false;
   const pf = myProfile();
-  if(me && pf.payInfo && !me.payInfo){ me.payInfo = pf.payInfo; return true; }
-  return false;
+  if(pf.payInfo && !me.payInfo){ me.payInfo = pf.payInfo; changed = true; }
+  if(MY_PIC && me.pic !== MY_PIC){ me.pic = MY_PIC; changed = true; }   // 自己的大頭貼回填（舊帳本也會逐漸補齊）
+  return changed;
 }
 function renderAvatar(){
   const a = $("#avatarBtn"); if(!a) return;
