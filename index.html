@@ -2322,7 +2322,8 @@ function resultText(){
     const st = smap[t.from+">"+t.to] || {};
     const toM = current.members.find(m=>m.id===t.to);
     const pay = (!st.paid && toM && toM.payInfo && toM.payInfo.trim());
-    s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}${pay?`（收款：${toM.payInfo.trim()}）`:""}\n`;
+    const payShort = pay ? toM.payInfo.trim().split(/\s+/)[0] : '';   // 只露銀行/方式名，完整帳號不進複製文字（在 App 內複製鈕拿）
+    s += `・${r.nameOf[t.from]} → ${r.nameOf[t.to]}：${money(t.amount)}${payShort?`（收款：${payShort}）`:""}\n`;
   }
   return s.trim();
 }
