@@ -675,7 +675,7 @@ async function rpc(name, args){
 // 雲端 row ↔ app 物件（members↔participants、date↔event_date）
 function rowToGathering(row, token){
   return {
-    id: row.id, shareToken: row.share_token || token, slug: row.slug || null,
+    id: row.id, ownerId: row.owner_id || null, shareToken: row.share_token || token, slug: row.slug || null,
     title: row.title || "", date: row.event_date || "",
     currency: row.currency || "TWD", status: row.status || "open",
     members: row.participants || [], items: row.items || [],
@@ -1226,6 +1226,13 @@ function setAvatarEl(el, pic, name){
   el.innerHTML=''; el.style.backgroundImage='none'; el.style.backgroundColor = name?avColor(name):''; el.textContent=(name||'我').slice(0,1);
 }
 function isMeMember(m){ return !!((MY_UID && m.uid===MY_UID) || (getMe()===m.id)); }
+// 我是不是這本帳的建立者（擁有者）：優先用後端 ownerId，否則退回第一位成員（g_create 時 owner＝第一位）
+function iAmOwner(){
+  if(!current || !MY_UID) return false;
+  if(current.ownerId) return current.ownerId===MY_UID;
+  const first = current.members && current.members[0];
+  return !!(first && first.uid===MY_UID);
+}
 function memberBadgeTop(m){   // 頭像右下角的第一順位徽章：自己用 featured、別人用後端 top
   if(isMeMember(m)) return myFeaturedTop();
   const mb = m.uid ? _memberBadges[m.uid] : null;
@@ -2176,10 +2183,10 @@ function renderResult(){
         const pay = toM && toM.payInfo && toM.payInfo.trim();
         const iAmPayer = MY_UID && fromM && fromM.uid===MY_UID;
         const iAmPayee = MY_UID && toM && toM.uid===MY_UID;
-        // 只有本人能動：付款人才能「標記已付」、收款人才能「確認收到」；
-        // 若該成員是未綁 LINE 的預設名字（本人不在 app），則任一成員可代記
-        const canMarkPaid = iAmPayer || (fromM && !fromM.uid);
-        const canConfirm  = iAmPayee || (toM && !toM.uid);
+        // 本人才能動：付款人標「已付」、收款人「確認收到」；
+        // 當事人若是「沒綁 LINE 的預設名字」（本人不在 App），只有「建立這本帳的人」能代記
+        const canMarkPaid = iAmPayer || (fromM && !fromM.uid && iAmOwner());
+        const canConfirm  = iAmPayee || (toM && !toM.uid && iAmOwner());
         const stateCls = st.confirmed ? 'paid' : (st.paid ? 'pending' : '');
         const copyBtn = pay ? `<button class="copyacct iconbtn-sm" onclick="copyPay('${t.to}')" aria-label="複製收款帳號" title="複製收款帳號">${ICONS.copy}</button>` : '';
         let topBtn;
