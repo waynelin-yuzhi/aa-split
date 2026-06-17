@@ -398,8 +398,10 @@
       <button class="btn" onclick="mmAdd()">加入</button>
     </div>
     <div class="faint" style="margin-top:8px;">點名字可改名、✕ 可移除。想找朋友用 LINE 一起記，回上一頁按「邀請」。</div>
-    <button class="btn ghost block" onclick="openMergeModal()" style="margin-top:10px;">合併重複的人</button>
-    <div class="faint" style="margin-top:6px;">同一人不小心出現兩筆（例如加入後沒認領）時，用這個併起來。</div>
+    <div id="mmMerge">
+      <button class="btn ghost block" onclick="openMergeModal()" style="margin-top:10px;">合併重複的人</button>
+      <div class="faint" style="margin-top:6px;">同一人不小心出現兩筆（例如加入後沒認領）時，用這個併起來。只有建立者可用。</div>
+    </div>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeMembers()">完成</button>
   </div>
@@ -1633,6 +1635,7 @@ function renderMembersModal(){
   const m = current.members || [];
   const joined = m.filter(p=>p.uid).length;
   $("#mmCount").textContent = m.length ? `${m.length} 名・${joined} 已用 LINE 加入` : "";
+  const mm = $("#mmMerge"); if(mm) mm.classList.toggle("hidden", !(iAmOwner() && m.length>=2));   // 合併只有建立者可用
   $("#mmList").innerHTML = m.length
     ? m.map(p=>{
         const on = !!p.uid, me = p.uid===MY_UID;
@@ -1687,6 +1690,7 @@ function mergeMembers(keepId, dropId){
   logHistory(`合併成員：「${drop.name}」併入「${keep.name}」`);
 }
 function openMergeModal(){
+  if(!iAmOwner()){ toast("只有建立這本帳的人可以合併"); return; }
   const m = current.members||[];
   if(m.length<2){ toast("至少要兩位成員才需要合併"); return; }
   // 預設挑「最可能的重複對」：名字相近、且一筆有 LINE 一筆沒有 → 移除預設那筆、保留 LINE 那筆
