@@ -750,7 +750,11 @@ const Store = {
   async recordReferral(inviter){ await rpc("g_record_referral", { p_access_token: ACCESS_TOKEN, p_inviter: inviter }); },
   async getBadges(){ const {data,error}=await sb.rpc("g_my_badges",{p_access_token:ACCESS_TOKEN}); if(error) throw error; return data||{}; },
   async memberBadges(id){ const {data,error}=await sb.rpc("g_member_badges",{p_access_token:ACCESS_TOKEN, p_id:id}); if(error) throw error; return Array.isArray(data)?data:[]; }, // 同帳本成員公開徽章（回陣列，不可用 rpc() 解包）
-  async setFeatured(keys){ await rpc("g_set_featured", { p_access_token: ACCESS_TOKEN, p_badges: keys }); }
+  async setFeatured(keys){ await rpc("g_set_featured", { p_access_token: ACCESS_TOKEN, p_badges: keys }); },
+  async settle(id, from, to, op){   // 逐筆結算（後端驗身分、原子寫入、回傳更新後帳本）
+    const row = await rpc("g_settle", { p_access_token: ACCESS_TOKEN, p_id:id, p_from:from, p_to:to, p_op:op });
+    return rowToGathering(row);
+  }
 };
 
 /* =========================================================================
@@ -2278,25 +2282,28 @@ function settleMap(){
     current.settlements = normSettle(current.settlements);
   return current.settlements;
 }
-function toggleSettle(from, to){   // 付款人：標記/取消「已付」（取消連帶清掉確認）
-  const map = settleMap(), k = from+">"+to, nm = (lastResult&&lastResult.nameOf)||{};
-  if(map[k] && map[k].paid){ delete map[k]; logHistory(`改回未付：${nm[from]||'?'}→${nm[to]||'?'}`); }
-  else { map[k] = {paid:true, confirmed:false}; logHistory(`標記已付：${nm[from]||'?'}→${nm[to]||'?'}`); }
-  persistCurrent(); renderResult();
+// 結算標記全走後端 g_settle（驗身分、原子寫入）；current 用回傳值更新後重畫
+async function toggleSettle(from, to){   // 付款方：標記/取消「已付」
+  const map = settleMap(), k = from+">"+to;
+  const op = (map[k] && map[k].paid) ? 'unmark_paid' : 'mark_paid';
+  try{ current = await Store.settle(current.id, from, to, op); }
+  catch(e){ console.error(e); return toast(_settleErr(e)); }
+  broadcastChanged(current.id); renderResult();
 }
-function toggleConfirm(from, to){  // 收款人：確認收到 / 取消確認
-  const map = settleMap(), k = from+">"+to, nm = (lastResult&&lastResult.nameOf)||{};
+async function toggleConfirm(from, to){  // 收款方：確認收到 / 取消確認
+  const map = settleMap(), k = from+">"+to;
   if(!map[k] || !map[k].paid) return;
-  map[k].confirmed = !map[k].confirmed;
-  logHistory(`${map[k].confirmed?'確認收到':'取消確認'}：${nm[from]||'?'}→${nm[to]||'?'}`);
-  persistCurrent(); renderResult();
+  const op = map[k].confirmed ? 'unconfirm' : 'confirm';
+  try{ current = await Store.settle(current.id, from, to, op); }
+  catch(e){ console.error(e); return toast(_settleErr(e)); }
+  broadcastChanged(current.id); renderResult();
 }
-function settleReceived(from, to){  // 收款人：在「未付」狀態直接標「我已收到」→ 一次標成已付＋已確認、直接結清
-  const map = settleMap(), k = from+">"+to, nm = (lastResult&&lastResult.nameOf)||{};
-  map[k] = {paid:true, confirmed:true};
-  logHistory(`收款人標記已收到：${nm[from]||'?'}→${nm[to]||'?'}`);
-  persistCurrent(); renderResult();
+async function settleReceived(from, to){  // 收款方：未付狀態直接「我已收到」→ 已付＋已確認結清（付款人轉了沒更新時用）
+  try{ current = await Store.settle(current.id, from, to, 'received'); }
+  catch(e){ console.error(e); return toast(_settleErr(e)); }
+  broadcastChanged(current.id); renderResult();
 }
+function _settleErr(e){ const m=String((e&&e.message)||''); if(m.includes('not allowed')) return '只有當事人能標記這筆'; if(m.includes('not paid')) return '對方還沒標記已付'; return '更新失敗，請重試'; }
 function remindReceipt(from, to, amount){   // 一鍵在 LINE 提醒收款人確認（使用者自己選對象送出）
   const fromN = (lastResult && lastResult.nameOf[from]) || "", toN = (lastResult && lastResult.nameOf[to]) || "";
   const link = current.slug ? `https://liff.line.me/${LIFF_ID}?g=${current.slug}` : "";
