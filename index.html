@@ -338,6 +338,12 @@
   .avopt-pic.avopt-up svg{width:22px; height:22px;}
   .avopt.sel .avopt-pic{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
   .avopt span{font-size:10.5px; color:var(--muted);}
+  .settled-sec{margin-top:8px;}
+  .settled-head{width:100%; display:flex; align-items:center; justify-content:space-between; background:transparent; border:0;
+    color:var(--muted); font-size:13.5px; font-weight:650; padding:10px 4px; cursor:pointer;}
+  .settled-caret{color:var(--faint); font-size:12px;}
+  .settled-badge{flex:0 0 auto; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-bd);
+    border-radius:999px; padding:3px 9px; font-size:11.5px; font-weight:700; white-space:nowrap;}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -690,26 +696,40 @@ async function rpcRows(name, args){
   return Array.isArray(data) ? data : (data ? [data] : []);
 }
 
+// 一本帳是否「結清」：有實際消費，且最少轉帳全部已確認（或打平、不用轉）
+function rowSettled(r){
+  const items = r.items||[], adjustments = r.adjustments||[];
+  if(!(grandTotal(items, adjustments) > 0)) return false;
+  const members = (r.participants||[]).map(p=>({id:p.id, name:p.name}));
+  const res = computeSplit(members, items, adjustments, r.transfers||[]);
+  if(res.transfers.length === 0) return true;   // 打平/已喬平
+  const sm = normSettle(r.settlements);
+  return res.transfers.every(t => { const s = sm[t.from+">"+t.to]; return !!(s && s.confirmed); });
+}
+
 // 身分制：所有操作帶 ACCESS_TOKEN，後端用它驗證 LINE 身分
 const Store = {
   async list(){   // 我有份的聚會（owner 或成員），跟身分跑；順手算個人成就統計
     const rows = await rpcRows("g_list", { p_access_token: ACCESS_TOKEN });
-    let items=0, total=0; const friends = new Set();
-    for(const r of rows){
+    const out = rows.map(r => ({
+      id: r.id, title: r.title, date: r.event_date, cover: r.cover || '',
+      n: (r.participants||[]).length, count: (r.items||[]).length,
+      total: grandTotal(r.items, r.adjustments), updatedAt: r.updated_at,
+      settled: rowSettled(r)
+    }));
+    let items=0, total=0, settled=0; const friends = new Set();
+    rows.forEach((r,i)=>{
       items += (r.items||[]).length;
-      total += grandTotal(r.items, r.adjustments);
+      total += out[i].total;
+      if(out[i].settled) settled++;
       for(const p of (r.participants||[])){
         if(p.uid && p.uid===MY_UID) continue;
         if(!p.uid && p.name===MY_NAME) continue;
         friends.add(p.uid ? ('u:'+p.uid) : ('n:'+p.name));
       }
-    }
-    _myStats = { gatherings: rows.length, items, total, friends: friends.size };
-    return rows.map(r => ({
-      id: r.id, title: r.title, date: r.event_date, cover: r.cover || '',
-      n: (r.participants||[]).length, count: (r.items||[]).length,
-      total: grandTotal(r.items, r.adjustments), updatedAt: r.updated_at
-    }));
+    });
+    _myStats = { gatherings: rows.length, items, total, friends: friends.size, settled };
+    return out;
   },
   async create(g){
     const row = await rpc("g_create", { p_access_token: ACCESS_TOKEN, p_title:g.title||null,
@@ -1034,15 +1054,15 @@ async function renderList(){
     return;
   }
   const ordered = applySavedOrder(gs);
-  const grip = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="5" cy="4" r="1.3"/><circle cx="11" cy="4" r="1.3"/><circle cx="5" cy="8" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg>`;
-  const st = _myStats || {items:0, total:0, friends:0};
+  const st = _myStats || {items:0, total:0, friends:0, settled:0};
   const badges = featuredBadges();
   const inv = (_myBadges && Number(_myBadges.invited)) || 0;
   const hero = st.items>0 ? `
     <div class="hero">
       <div class="hero-stats">
         <div class="hs"><span class="hs-num" data-count="${st.items}">0</span><span class="hs-lab">筆帳</span></div>
-        <div class="hs"><span class="hs-num" data-count="${st.friends}">0</span><span class="hs-lab">位朋友</span></div>
+        <div class="hs"><span class="hs-num" data-count="${st.friends}">0</span><span class="hs-lab">朋友</span></div>
+        <div class="hs"><span class="hs-num" data-count="${st.settled||0}">0</span><span class="hs-lab">結清</span></div>
         <div class="hs"><span class="hs-num" data-count="${st.total}" data-money="1">$0</span><span class="hs-lab">總金額</span></div>
       </div>
       <div class="hero-foot">
@@ -1050,24 +1070,45 @@ async function renderList(){
         <button class="hero-invite" onclick="shareApp()">🎁 揪朋友${inv?` ·已揪 ${inv}`:''}</button>
       </div>
     </div>` : '';
-  $("#main").innerHTML = hero + `<div id="listWrap">` + ordered.map(g => { const lc = parseCover(g.cover); return `
-    <div class="listrow ${lc?'has-cover':''}" data-id="${g.id}" onclick="openGathering('${g.id}')"${lc?` style="background-image:linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.62)), url('${lc.url}'); background-size:cover; background-position:center, center ${lc.pos}%;"`:''}>
-      <div class="drag" aria-label="拖曳排序">${grip}</div>
+  const active = ordered.filter(g=>!g.settled), settled = ordered.filter(g=>g.settled);
+  $("#main").innerHTML = hero
+    + `<div id="listWrap">`
+      + (active.length ? active.map(g=>listRowHTML(g,false)).join("")
+         : (settled.length ? `<div class="faint" style="text-align:center;padding:18px 8px;">進行中的都結清囉 🎉</div>` : ""))
+    + `</div>`
+    + (settled.length ? `<div class="settled-sec">
+        <button class="settled-head" onclick="toggleSettledList()"><span>✓ 已結清（${settled.length}）</span><span id="settledCaret" class="settled-caret">${_showSettled?'▾':'▸'}</span></button>
+        <div id="settledBody"${_showSettled?'':' class="hidden"'}>${settled.map(g=>listRowHTML(g,true)).join("")}</div>
+      </div>` : "")
+    + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()" aria-label="新增分帳">＋</button>`;
+  enableListDrag();
+  document.querySelectorAll('.hs-num').forEach(el=>countUp(el, Number(el.dataset.count)||0, el.dataset.money==='1'));
+}
+const GRIP_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="5" cy="4" r="1.3"/><circle cx="11" cy="4" r="1.3"/><circle cx="5" cy="8" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg>`;
+function listRowHTML(g, settled){
+  const lc = parseCover(g.cover);
+  const coverStyle = lc ? ` style="background-image:linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.62)), url('${lc.url}'); background-size:cover; background-position:center, center ${lc.pos}%;"` : '';
+  return `<div class="listrow ${lc?'has-cover':''}" data-id="${g.id}" onclick="openGathering('${g.id}')"${coverStyle}>
+      ${settled ? '' : `<div class="drag" aria-label="拖曳排序">${GRIP_SVG}</div>`}
       <div class="meta">
         <div class="t">${esc(g.title||"未命名帳本")}</div>
         <div class="s">${esc(g.date||"")} ・ ${g.n||0} 人 ・ ${g.count||0} 筆</div>
       </div>
       <div class="amt num">${money(g.total||0)}</div>
-      <div class="faint">›</div>
-    </div>`; }).join("") + `</div>`
-    + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()" aria-label="新增分帳">＋</button>`;
-  enableListDrag();
-  document.querySelectorAll('.hs-num').forEach(el=>countUp(el, Number(el.dataset.count)||0, el.dataset.money==='1'));
+      ${settled ? '<span class="settled-badge">✓ 已結清</span>' : '<div class="faint">›</div>'}
+    </div>`;
+}
+let _showSettled = false;
+function toggleSettledList(){
+  _showSettled = !_showSettled;
+  const b = $("#settledBody"); if(b) b.classList.toggle("hidden", !_showSettled);
+  const c = $("#settledCaret"); if(c) c.textContent = _showSettled ? '▾' : '▸';
 }
 // 徽章（門檻可調）：元老/分帳達人/揪團王/新朋友
 const BADGE_ELDER_CUTOFF = '2026-09-01';  // 在此之前開始用＝元老
 const BADGE_MASTER_ITEMS = 20;            // 累積筆數→分帳達人
 const BADGE_KING_INVITES = 5;             // 成功邀請→揪團王
+const BADGE_FINISHER_SETTLED = 3;         // 結清帳本數→收尾高手
 const UNLOCK_THEME_INVITES = 3;           // 成功邀請→解鎖森林主題
 function myInvites(){ return (_myBadges && Number(_myBadges.invited)) || 0; }
 // 原創多色徽記（漸層＋呼應品牌的勾勾），搭配金箔光掃動畫
@@ -1075,14 +1116,16 @@ const BADGE_ICONS = {
   elder: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bElder" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7da72"/><stop offset="1" stop-color="#df8c34"/></linearGradient></defs><path d="M9 7 7 3h2.6l1.4 2.6z" fill="#7dd3a8"/><path d="M15 7l2-4h-2.6L13 5.6z" fill="#52b389"/><circle cx="12" cy="14" r="6.4" fill="url(#bElder)"/><path d="M9.2 14.1l1.9 1.9 3.5-3.7" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   master: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bMaster" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3a8"/><stop offset="1" stop-color="#4aa6da"/></linearGradient></defs><path d="M12 2.5l2.6 5.5 6 .7-4.4 4.1 1.1 5.9L12 16l-5.3 2.7 1.1-5.9L3.4 8.7l6-.7z" fill="url(#bMaster)"/><circle cx="12" cy="11.4" r="2.1" fill="#fff" opacity=".85"/></svg>`,
   king: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bKing" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7d35a"/><stop offset="1" stop-color="#e0813a"/></linearGradient></defs><path d="M3.5 18l-1-9 4.3 4L12 6l5.2 7 4.3-4-1 9z" fill="url(#bKing)"/><rect x="3.5" y="18" width="17" height="2.6" rx="0.7" fill="#d9772f"/><circle cx="12" cy="9" r="1.2" fill="#e67ba8"/><circle cx="6.7" cy="13" r="0.9" fill="#7dd3a8"/><circle cx="17.3" cy="13" r="0.9" fill="#7dd3a8"/></svg>`,
-  friend: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFriend" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ec84b0"/><stop offset="1" stop-color="#f0934a"/></linearGradient></defs><path d="M11 2.5c.7 4.6 2.3 6.2 6.9 6.9-4.6.7-6.2 2.3-6.9 6.9-.7-4.6-2.3-6.2-6.9-6.9 4.6-.7 6.2-2.3 6.9-6.9z" fill="url(#bFriend)"/><path d="M18.5 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" fill="#f5cd5a"/></svg>`
+  friend: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFriend" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ec84b0"/><stop offset="1" stop-color="#f0934a"/></linearGradient></defs><path d="M11 2.5c.7 4.6 2.3 6.2 6.9 6.9-4.6.7-6.2 2.3-6.9 6.9-.7-4.6-2.3-6.2-6.9-6.9 4.6-.7 6.2-2.3 6.9-6.9z" fill="url(#bFriend)"/><path d="M18.5 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" fill="#f5cd5a"/></svg>`,
+  finisher: `<svg viewBox="0 0 24 24"><defs><linearGradient id="bFinish" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3a8"/><stop offset="1" stop-color="#4aa6da"/></linearGradient></defs><path d="M8.3 13 L7 22 L12 19.3 L17 22 L15.7 13z" fill="#e0813a"/><circle cx="12" cy="10" r="7.3" fill="url(#bFinish)"/><path d="M8.6 10.2l2.3 2.3 4.4-4.7" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 };
-const BADGE_LABELS = { elder:'元老', master:'分帳達人', king:'揪團王', friend:'新朋友' };
+const BADGE_LABELS = { elder:'元老', master:'分帳達人', king:'揪團王', friend:'新朋友', finisher:'收尾高手' };
 function earnedBadges(){
   const st = _myStats||{items:0}, b = _myBadges||{}, list = [];
   if(b.elder) list.push({k:'elder', label:'元老', desc:'最早加入的前 30 名'});
   if((st.items||0) >= BADGE_MASTER_ITEMS) list.push({k:'master', label:'分帳達人', desc:`累積記了 ${BADGE_MASTER_ITEMS} 筆以上`});
   if(myInvites() >= BADGE_KING_INVITES) list.push({k:'king', label:'揪團王', desc:`成功邀請 ${BADGE_KING_INVITES} 位以上`});
+  if((st.settled||0) >= BADGE_FINISHER_SETTLED) list.push({k:'finisher', label:'收尾高手', desc:`結清了 ${BADGE_FINISHER_SETTLED} 本以上`});
   if(b.wasInvited) list.push({k:'friend', label:'新朋友', desc:'朋友揪你一起用的'});
   return list.map(x=>({...x, icon: BADGE_ICONS[x.k]}));
 }
@@ -1095,9 +1138,9 @@ function featuredBadges(){
   const picked = feat.map(k=>byKey[k]).filter(Boolean);
   return picked.length ? picked.slice(0,3) : all.slice(0,3);
 }
-// 頭像右下角只放「公開」徽章（元老/分帳達人/揪團王），新朋友不對外
+// 頭像右下角只放「公開」徽章（元老/分帳達人/揪團王）；新朋友、收尾高手不對外（後者目前只自己看）
 function myFeaturedTop(){
-  const pub = featuredBadges().find(b=>b.k!=='friend');
+  const pub = featuredBadges().find(b=>b.k!=='friend' && b.k!=='finisher');
   return pub ? pub.k : null;
 }
 // 數字往上跳的動畫（IG 追蹤數那種爬升感）
@@ -2301,13 +2344,23 @@ async function toggleConfirm(from, to){  // 收款方：確認收到 / 取消確
   try{ current = await Store.settle(current.id, from, to, op); }
   catch(e){ console.error(e); return toast(_settleErr(e)); }
   broadcastChanged(current.id); renderResult();
+  if(isCurrentSettled()) toast("🎉 全部結清，這本收工啦！");
 }
 async function settleReceived(from, to){  // 收款方：未付狀態直接「我已收到」→ 已付＋已確認結清（付款人轉了沒更新時用）
   try{ current = await Store.settle(current.id, from, to, 'received'); }
   catch(e){ console.error(e); return toast(_settleErr(e)); }
   broadcastChanged(current.id); renderResult();
+  if(isCurrentSettled()) toast("🎉 全部結清，這本收工啦！");
 }
 function _settleErr(e){ const m=String((e&&e.message)||''); if(m.includes('not allowed')) return '只有當事人能標記這筆'; if(m.includes('not paid')) return '對方還沒標記已付'; return '更新失敗，請重試'; }
+// 目前帳本是否全部結清（最少轉帳都確認、或打平）
+function isCurrentSettled(){
+  if(!lastResult || !current) return false;
+  const trs = lastResult.transfers||[];
+  if(trs.length===0) return grandTotal(current.items, current.adjustments) > 0;
+  const sm = normSettle(current.settlements);
+  return trs.every(t=>{ const s=sm[t.from+">"+t.to]; return !!(s && s.confirmed); });
+}
 function remindReceipt(from, to, amount){   // 一鍵在 LINE 提醒收款人確認（使用者自己選對象送出）
   const fromN = (lastResult && lastResult.nameOf[from]) || "", toN = (lastResult && lastResult.nameOf[to]) || "";
   const link = current.slug ? `https://liff.line.me/${LIFF_ID}?g=${current.slug}` : "";
