@@ -359,6 +359,8 @@
   .bg-tic{width:28px; height:28px;}
   .bg-tic svg{width:100%; height:100%; display:block;}
   .bg-tier span{font-size:10.5px; color:var(--muted); white-space:nowrap;}
+  .name-badge{display:inline-flex; width:16px; height:16px; vertical-align:-3px; margin-left:4px;}
+  .name-badge svg{width:100%; height:100%; display:block;}
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -704,7 +706,7 @@ async function rpc(name, args){
 // 雲端 row ↔ app 物件（members↔participants、date↔event_date）
 function rowToGathering(row, token){
   return {
-    id: row.id, ownerId: row.owner_id || null, shareToken: row.share_token || token, slug: row.slug || null,
+    id: row.id, ownerId: row.owner_id || null, fastPayUid: row.fast_pay_uid || null, shareToken: row.share_token || token, slug: row.slug || null,
     title: row.title || "", date: row.event_date || "",
     currency: row.currency || "TWD", status: row.status || "open",
     members: row.participants || [], items: row.items || [],
@@ -741,18 +743,19 @@ const Store = {
       total: grandTotal(r.items, r.adjustments), updatedAt: r.updated_at,
       settled: rowSettled(r)
     }));
-    let items=0, total=0, settled=0; const friends = new Set();
+    let items=0, total=0, settled=0, payfast=0; const friends = new Set();
     rows.forEach((r,i)=>{
       items += (r.items||[]).length;
       total += out[i].total;
       if(out[i].settled) settled++;
+      if(r.fast_pay_uid && r.fast_pay_uid===MY_UID) payfast++;
       for(const p of (r.participants||[])){
         if(p.uid && p.uid===MY_UID) continue;
         if(!p.uid && p.name===MY_NAME) continue;
         friends.add(p.uid ? ('u:'+p.uid) : ('n:'+p.name));
       }
     });
-    _myStats = { gatherings: rows.length, items, total, friends: friends.size, settled };
+    _myStats = { gatherings: rows.length, items, total, friends: friends.size, settled, payfast };
     return out;
   },
   async create(g){
@@ -800,7 +803,8 @@ const Store = {
   async settle(id, from, to, op){   // 逐筆結算（後端驗身分、原子寫入、回傳更新後帳本）
     const row = await rpc("g_settle", { p_access_token: ACCESS_TOKEN, p_id:id, p_from:from, p_to:to, p_op:op });
     return rowToGathering(row);
-  }
+  },
+  async setFastpay(id, uid){ await rpc("g_set_fastpay", { p_access_token: ACCESS_TOKEN, p_id:id, p_uid:uid }); }  // 秒付俠 first-wins
 };
 
 /* =========================================================================
@@ -1358,6 +1362,12 @@ function memberBadgeTop(m){   // 頭像右下角的第一順位徽章 {k,tier}�
   if(isMeMember(m)) return myFeaturedTop();
   const mb = m.uid ? _memberBadges[m.uid] : null;
   return (mb && mb.top) ? {k:mb.top, tier:(mb.topTier||1)} : null;
+}
+// 結算結果卡名字旁的小徽章（第一順位、含等級）；截圖分享出去也看得到
+function memberBadgeMini(memberId){
+  const m = current && current.members.find(x=>x.id===memberId); if(!m) return '';
+  const top = memberBadgeTop(m); if(!top) return '';
+  return `<span class="name-badge">${badgeSvg(top.k, top.tier)}</span>`;
 }
 function memberAvatarHTML(m){
   const me = isMeMember(m);
@@ -2289,7 +2299,7 @@ function renderResult(){
     const cls = net>0?"pos":(net<0?"neg":"");
     const tag = net>0?`+${money(net).slice(1)} 收`:(net<0?`−${money(-net).slice(1)} 付`:"平");
     return `<div class="person">
-      <span class="nm">${esc(p.name)}</span>
+      <span class="nm">${esc(p.name)}${memberBadgeMini(p.id)}</span>
       <span class="ow num">應付 ${money(r.owe[p.id])}</span>
       <span class="net ${cls} num">${tag}</span>
     </div>`;
@@ -2420,13 +2430,13 @@ async function toggleConfirm(from, to){  // 收款方：確認收到 / 取消確
   const op = map[k].confirmed ? 'unconfirm' : 'confirm';
   try{ current = await Store.settle(current.id, from, to, op); }
   catch(e){ console.error(e); return toast(_settleErr(e)); }
-  broadcastChanged(current.id); renderResult();
+  broadcastChanged(current.id); renderResult(); maybeMarkFastPay();
   if(isCurrentSettled()) toast("🎉 全部結清，這本收工啦！");
 }
 async function settleReceived(from, to){  // 收款方：未付狀態直接「我已收到」→ 已付＋已確認結清（付款人轉了沒更新時用）
   try{ current = await Store.settle(current.id, from, to, 'received'); }
   catch(e){ console.error(e); return toast(_settleErr(e)); }
-  broadcastChanged(current.id); renderResult();
+  broadcastChanged(current.id); renderResult(); maybeMarkFastPay();
   if(isCurrentSettled()) toast("🎉 全部結清，這本收工啦！");
 }
 function _settleErr(e){ const m=String((e&&e.message)||''); if(m.includes('not allowed')) return '只有當事人能標記這筆'; if(m.includes('not paid')) return '對方還沒標記已付'; return '更新失敗，請重試'; }
@@ -2437,6 +2447,24 @@ function isCurrentSettled(){
   if(trs.length===0) return grandTotal(current.items, current.adjustments) > 0;
   const sm = normSettle(current.settlements);
   return trs.every(t=>{ const s=sm[t.from+">"+t.to]; return !!(s && s.confirmed); });
+}
+// 秒付俠：誰已把自己該付的全部付清(確認)；first-wins 記到帳本
+function clearedDebtorUids(){
+  if(!lastResult) return [];
+  const trs = lastResult.transfers||[], sm = normSettle(current.settlements), out = [];
+  for(const fid of [...new Set(trs.map(t=>t.from))]){
+    const mine = trs.filter(t=>t.from===fid);
+    if(mine.length && mine.every(t=>{ const s=sm[t.from+">"+t.to]; return !!(s && s.confirmed); })){
+      const mem = current.members.find(x=>x.id===fid);
+      if(mem && mem.uid) out.push(mem.uid);
+    }
+  }
+  return out;
+}
+function maybeMarkFastPay(){
+  if(!current || current.fastPayUid) return;
+  const cl = clearedDebtorUids();
+  if(cl.length){ current.fastPayUid = cl[0]; if(CLOUD && ACCESS_TOKEN) Store.setFastpay(current.id, cl[0]).catch(e=>console.error(e)); }
 }
 function remindReceipt(from, to, amount){   // 一鍵在 LINE 提醒收款人確認（使用者自己選對象送出）
   const fromN = (lastResult && lastResult.nameOf[from]) || "", toN = (lastResult && lastResult.nameOf[to]) || "";
