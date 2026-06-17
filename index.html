@@ -1069,7 +1069,7 @@ const BADGE_ICONS = {
 const BADGE_LABELS = { elder:'元老', master:'分帳達人', king:'揪團王', friend:'新朋友' };
 function earnedBadges(){
   const st = _myStats||{items:0}, b = _myBadges||{}, list = [];
-  if(b.firstSeen && String(b.firstSeen) < BADGE_ELDER_CUTOFF) list.push({k:'elder', label:'元老', desc:'早期就開始用的元老'});
+  if(b.elder) list.push({k:'elder', label:'元老', desc:'最早加入的前 30 名'});
   if((st.items||0) >= BADGE_MASTER_ITEMS) list.push({k:'master', label:'分帳達人', desc:`累積記了 ${BADGE_MASTER_ITEMS} 筆以上`});
   if(myInvites() >= BADGE_KING_INVITES) list.push({k:'king', label:'揪團王', desc:`成功邀請 ${BADGE_KING_INVITES} 位以上`});
   if(b.wasInvited) list.push({k:'friend', label:'新朋友', desc:'朋友揪你一起用的'});
