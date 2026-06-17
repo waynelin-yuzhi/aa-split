@@ -389,6 +389,16 @@
   .gd-try{margin-top:7px; font-size:12.5px; color:var(--accent); font-weight:600; cursor:pointer; display:inline-block;}
   .demo-bar{position:fixed; top:0; left:0; right:0; z-index:9998; background:var(--accent); color:#0f1115; font-size:13px; font-weight:600; padding:9px 14px; display:flex; justify-content:space-between; align-items:center;}
   .demo-bar button{background:rgba(0,0,0,.16); color:#0f1115; border:none; border-radius:8px; padding:5px 12px; font-weight:700; cursor:pointer;}
+  /* 版本號 + 更新紀錄 */
+  .ver-tag{text-align:center; font-size:12px; color:var(--faint); padding:14px 0 2px; cursor:pointer;}
+  .ver-dot{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--pay); margin-left:5px; vertical-align:1px;}
+  .cl-entry{padding:12px 0; border-top:1px solid var(--line);}
+  .cl-entry:first-child{border-top:none;}
+  .cl-head{display:flex; align-items:baseline; gap:9px; margin-bottom:5px;}
+  .cl-v{font-size:15px; font-weight:700;}
+  .cl-d{font-size:12px; color:var(--muted);}
+  .cl-items{margin:0; padding-left:18px;}
+  .cl-items li{font-size:13px; color:var(--ink); margin:3px 0; line-height:1.5;}
   .topgap{margin-top:6px;}
   hr.sep{border:0; border-top:1px solid var(--line); margin:16px 0;}
 </style>
@@ -518,6 +528,15 @@
     <button class="btn ghost block" onclick="closeGuide();enterDemo();startOnboarding(function(){exitDemo();renderList();})" style="margin-top:4px;">重看新手引導</button>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeGuide()">關閉</button>
+  </div>
+</div>
+
+<div id="changelogModal" class="modal hidden" style="z-index:80;">
+  <div class="modal-card">
+    <div class="modal-head"><div><div class="pm-name">更新紀錄</div><div class="faint" id="clVer"></div></div></div>
+    <div id="changelogBody"></div>
+    <div class="spacer"></div>
+    <button class="btn ghost block" onclick="closeChangelog()">關閉</button>
   </div>
 </div>
 
@@ -976,15 +995,23 @@ function pickAvatar(){
   if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.id='avatarInput'; inp.style.display='none'; inp.addEventListener('change', onAvatarPicked); document.body.appendChild(inp); }
   inp.value=''; inp.click();
 }
+// 上傳身分把關：先向 upload-url Edge Function 換「簽名上傳網址」（後端驗 LINE 身分、封面再驗成員），
+// 再用 uploadToSignedUrl 上傳。bucket 已關掉 anon 直接上傳，灌圖必須先過這關。
+async function signedUpload(kind, blob, gatheringId){
+  const { data, error } = await sb.functions.invoke('upload-url', { body:{ accessToken: ACCESS_TOKEN, kind, gatheringId: gatheringId||null }});
+  if(error) throw error;
+  if(!data || !data.token || !data.path) throw new Error((data && data.error) || '簽名失敗');
+  const up = await sb.storage.from('covers').uploadToSignedUrl(data.path, data.token, blob, { contentType:'image/jpeg' });
+  if(up.error) throw up.error;
+  return sb.storage.from('covers').getPublicUrl(data.path).data.publicUrl;
+}
 async function onAvatarPicked(e){
   const file = e.target.files && e.target.files[0]; if(!file) return;
+  if(IS_DEMO) return toast('範例帳本：僅供瀏覽教學');
   toast('頭像上傳中…');
   try{
     const blob = await downscaleImage(file, 256, 60, 0.85);   // 小尺寸＋壓到 ~60KB＋重編碼（去 EXIF/GPS）
-    const path = `avatars/${MY_UID||'x'}/${randHex(20)}.jpg`;
-    const up = await sb.storage.from('covers').upload(path, blob, {contentType:'image/jpeg', upsert:false});
-    if(up.error) throw up.error;
-    _avatarSel = sb.storage.from('covers').getPublicUrl(path).data.publicUrl;
+    _avatarSel = await signedUpload('avatar', blob);
     renderAvatarEditor(); setAvatarEl($("#pmAvatar"), _avatarSel, MY_NAME);
     toast('頭像已選好，記得按儲存');
   }catch(err){ console.error(err); toast('上傳失敗，請再試一次'); }
@@ -1169,6 +1196,7 @@ async function renderList(){
         <button class="settled-head" onclick="toggleSettledList()"><span>✓ 已結清（${settled.length}）</span><span id="settledCaret" class="settled-caret">${_showSettled?'▾':'▸'}</span></button>
         <div id="settledBody"${_showSettled?'':' class="hidden"'}>${settled.map(g=>listRowHTML(g,true)).join("")}</div>
       </div>` : "")
+    + `<div class="ver-tag" onclick="openChangelog()">${APP_VERSION} ・ 更新紀錄${hasNewVersion()?'<span class="ver-dot"></span>':''}</div>`
     + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()" aria-label="新增分帳">＋</button>`;
   enableListDrag();
   document.querySelectorAll('.hs-num').forEach(el=>countUp(el, Number(el.dataset.count)||0, el.dataset.money==='1'));
@@ -1601,13 +1629,11 @@ function changeCover(){
 }
 async function onCoverPicked(e){
   const file = e.target.files && e.target.files[0]; if(!file || !current) return;
+  if(IS_DEMO) return toast('範例帳本：僅供瀏覽教學');
   toast('封面上傳中…');
   try{
     const blob = await downscaleImage(file, 1280, 200, 0.8);   // 縮圖＋壓到 ~200KB＋重編碼（去 EXIF/GPS）
-    const path = `${current.id}/${randHex(24)}.jpg`;
-    const up = await sb.storage.from('covers').upload(path, blob, {contentType:'image/jpeg', upsert:false});
-    if(up.error) throw up.error;
-    current.cover = sb.storage.from('covers').getPublicUrl(path).data.publicUrl;
+    current.cover = await signedUpload('cover', blob, current.id);
     logHistory('更換了封面底圖');
     await persistCurrent();
     renderEdit(false);
@@ -2696,6 +2722,40 @@ function declineJoin(){ _invite=null; history.replaceState(null,"",location.path
 /* =========================================================================
  * 啟動：LINE 登入（必須）→ 邀請連結 #g&t（成員直接開／非成員問加入）→ 否則我的列表
  * ========================================================================= */
+/* ===================== 版本號 + 更新紀錄公布欄 ===================== */
+const APP_VERSION = 'v1.0.0';
+const CHANGELOG = [
+  { v:'v1.0.0', d:'2026/06/18', items:[
+    '上線整備：安全強化（防惡意程式碼注入、權限把關、結算狀態防竄改）',
+    '可自行刪除帳號與個資、補上隱私政策／服務條款',
+    '新增「新手引導」與「使用說明」',
+    '封面照片自動壓縮、上傳改為需登入身分驗證',
+    '流量限制與內容審核（擋灌量與廣告）' ]},
+  { v:'v0.9.0', d:'2026/06/16', items:[
+    '帳本裡看得到成員大頭貼、誰在線上',
+    '徽章系統：分級徽章、徽章圖鑑、秒付俠／收尾高手',
+    '帳本結清里程碑與「已結清」收合區' ]},
+  { v:'v0.8.0', d:'2026/06/16', items:[
+    '多幣別與匯率換算',
+    '帳本封面底圖、暖色／森林佈景',
+    '編輯歷史紀錄' ]},
+  { v:'v0.7.0', d:'2026/06/15', items:[
+    'LINE 登入、各看各的帳本、換手機也在',
+    '短連結邀請、認領名字、即時同步',
+    '轉帳／還款紀錄' ]}
+];
+function hasNewVersion(){ try{ return localStorage.getItem('aa_seen_version') !== APP_VERSION; }catch(e){ return false; } }
+function openChangelog(){
+  $("#clVer").textContent = '目前版本 ' + APP_VERSION;
+  $("#changelogBody").innerHTML = CHANGELOG.map(c=>`<div class="cl-entry">
+    <div class="cl-head"><span class="cl-v">${esc(c.v)}</span><span class="cl-d">${esc(c.d)}</span></div>
+    <ul class="cl-items">${c.items.map(it=>`<li>${esc(it)}</li>`).join('')}</ul></div>`).join('');
+  try{ localStorage.setItem('aa_seen_version', APP_VERSION); }catch(e){}
+  document.querySelectorAll('.ver-dot').forEach(d=>d.remove());
+  $("#changelogModal").classList.remove('hidden');
+}
+function closeChangelog(){ $("#changelogModal").classList.add('hidden'); }
+
 /* ===================== 範例帳本 + 新手引導 + 使用說明 ===================== */
 let IS_DEMO = false;
 function demoGathering(){
