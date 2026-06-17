@@ -940,7 +940,7 @@ async function onAvatarPicked(e){
   const file = e.target.files && e.target.files[0]; if(!file) return;
   toast('頭像上傳中…');
   try{
-    const blob = await downscaleImage(file, 256, 0.85);   // 小尺寸＋重新編碼（去 EXIF/GPS）
+    const blob = await downscaleImage(file, 256, 60, 0.85);   // 小尺寸＋壓到 ~60KB＋重編碼（去 EXIF/GPS）
     const path = `avatars/${MY_UID||'x'}/${randHex(20)}.jpg`;
     const up = await sb.storage.from('covers').upload(path, blob, {contentType:'image/jpeg', upsert:false});
     if(up.error) throw up.error;
@@ -1509,14 +1509,29 @@ function randHex(n){
   if(window.crypto && crypto.getRandomValues){ const a=new Uint8Array(Math.ceil(n/2)); crypto.getRandomValues(a); return [...a].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,n); }
   return (Date.now().toString(36)+Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/g,'').slice(0,n);
 }
-function downscaleImage(file, maxW, quality){
+// 縮圖＋重編碼（去 EXIF/GPS）並壓到目標檔案大小。封面是深色遮罩下的背景裝飾、只在手機顯示，
+// 可壓得比一般照片兇：先降畫質，畫質到底仍超標就再縮尺寸，直到 <= targetKB 或尺寸觸底。
+function downscaleImage(file, maxW, targetKB, startQ){
+  targetKB = targetKB || 200; startQ = startQ || 0.8;
   return new Promise((resolve,reject)=>{
     const url = URL.createObjectURL(file), img = new Image();
-    img.onload = ()=>{ URL.revokeObjectURL(url);
+    img.onload = async ()=>{ URL.revokeObjectURL(url);
       let w=img.width, h=img.height; if(w>maxW){ h=Math.round(h*maxW/w); w=maxW; }
-      const c=document.createElement('canvas'); c.width=w; c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      c.toBlob(b=> b?resolve(b):reject(new Error('轉檔失敗')), 'image/jpeg', quality);
+      const c=document.createElement('canvas'), ctx=c.getContext('2d');
+      const draw = ()=>{ c.width=w; c.height=h; ctx.clearRect(0,0,w,h); ctx.drawImage(img,0,0,w,h); };
+      const enc = q => new Promise(r=> c.toBlob(b=>r(b), 'image/jpeg', q));
+      try{
+        draw(); let blob=null;
+        for(let pass=0; pass<6; pass++){
+          for(const q of [startQ, 0.7, 0.6, 0.5]){
+            blob = await enc(q);
+            if(blob && blob.size <= targetKB*1024){ resolve(blob); return; }
+          }
+          if(w<=560) break;   // 尺寸已夠小就收手，不為了 KB 把圖糊掉
+          w=Math.round(w*0.85); h=Math.round(h*0.85); draw();
+        }
+        if(blob) resolve(blob); else reject(new Error('轉檔失敗'));
+      }catch(err){ reject(err); }
     };
     img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('讀取圖片失敗')); };
     img.src = url;
@@ -1532,7 +1547,7 @@ async function onCoverPicked(e){
   const file = e.target.files && e.target.files[0]; if(!file || !current) return;
   toast('封面上傳中…');
   try{
-    const blob = await downscaleImage(file, 1280, 0.82);   // 縮圖＋重新編碼（順便去除 EXIF/GPS）
+    const blob = await downscaleImage(file, 1280, 200, 0.8);   // 縮圖＋壓到 ~200KB＋重編碼（去 EXIF/GPS）
     const path = `${current.id}/${randHex(24)}.jpg`;
     const up = await sb.storage.from('covers').upload(path, blob, {contentType:'image/jpeg', upsert:false});
     if(up.error) throw up.error;
