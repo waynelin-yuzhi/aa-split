@@ -361,6 +361,9 @@
   .bg-tier span{font-size:10.5px; color:var(--muted); white-space:nowrap;}
   .name-badge{display:inline-flex; width:16px; height:16px; vertical-align:-3px; margin-left:4px;}
   .name-badge svg{width:100%; height:100%; display:block;}
+  @keyframes twk{0%,100%{opacity:.5; transform:scale(.8);} 50%{opacity:1; transform:scale(1.18);}}
+  .twk{animation:twk 1.4s ease-in-out infinite;}
+  @media (prefers-reduced-motion: reduce){ .twk{animation:none;} }
   .hidden{display:none !important;}
   .spacer{height:8px;}
   .topgap{margin-top:6px;}
@@ -1153,7 +1156,7 @@ const TIER_NAME = ['', '銅', '銀', '金'];
 const TIER_GRAD = [null, ['#e8a76a','#a5673a'], ['#eef2f6','#9aa6b2'], ['#f8d96a','#d99a2e']];
 const BADGE_MOTIF = {
   elder:`<path d="M12 17.5V11" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><path d="M12 12.6C12 9.6 10 8 7.4 8 7.4 11 9.5 12.6 12 12.6Z" fill="#fff"/><path d="M12 11C12 8 14 6.4 16.6 6.4 16.6 9.4 14.5 11 12 11Z" fill="#fff" opacity=".92"/>`,
-  master:`<path d="M12 6l1.6 3.4 3.7.5-2.7 2.6.7 3.7L12 14.9 8.7 16.8l.7-3.7-2.7-2.6 3.7-.5z" fill="#fff"/>`,
+  master:(t)=>`<circle cx="8.6" cy="13.6" r="3" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="15.4" cy="13.6" r="3" fill="none" stroke="#fff" stroke-width="1.7"/><path d="M11.6 13.2 h0.8" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><path d="M5.6 12.5 l-1.5 -0.9" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><path d="M18.4 12.5 l1.5 -0.9" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><g class="twk" style="transform-box:fill-box;transform-origin:center"><path d="M16.6 5 L17.7 8 L20.7 9.1 L17.7 10.2 L16.6 13.2 L15.5 10.2 L12.5 9.1 L15.5 8 Z" fill="${t>=3?'#ffffff':'#ffd23f'}" stroke="#fff" stroke-width="0.4"/></g>`,
   king:`<path d="M5.6 16l-.8-6 3.2 2.6L12 8l3 4.6 3.2-2.6-.8 6z" fill="#fff"/><rect x="5.6" y="16" width="12.8" height="1.9" rx="0.6" fill="#fff"/>`,
   finisher:`<path d="M8.4 12.2l2.4 2.4 4.7-5" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>`,
   payfast:`<path d="M13.2 4 L7 13.2 h3.6 l-1 6.8 6.2-9.4 h-3.8z" fill="#fff"/>`
@@ -1164,7 +1167,7 @@ function badgeSvg(key, tier){
   if(key==='friend') return BADGE_FRIEND_SVG;
   const g = tier ? (TIER_GRAD[tier]||TIER_GRAD[1]) : ['#3a3f4a','#2a2f3a'];   // tier 0/未達成＝灰
   const gid = `bg_${key}_${tier||0}`;
-  return `<svg viewBox="0 0 24 24"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${g[0]}"/><stop offset="1" stop-color="${g[1]}"/></linearGradient></defs><circle cx="12" cy="12" r="10" fill="url(#${gid})"/><circle cx="12" cy="12" r="10" fill="none" stroke="#fff" stroke-opacity="${tier?.35:.15}" stroke-width="1"/><g opacity="${tier?1:.5}">${BADGE_MOTIF[key]||''}</g></svg>`;
+  return `<svg viewBox="0 0 24 24"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${g[0]}"/><stop offset="1" stop-color="${g[1]}"/></linearGradient></defs><circle cx="12" cy="12" r="10" fill="url(#${gid})"/><circle cx="12" cy="12" r="10" fill="none" stroke="#fff" stroke-opacity="${tier?.35:.15}" stroke-width="1"/><g opacity="${tier?1:.5}">${(typeof BADGE_MOTIF[key]==='function'?BADGE_MOTIF[key](tier):BADGE_MOTIF[key])||''}</g></svg>`;
 }
 function tierFromCount(thr, n){ let t=0; for(let i=0;i<thr.length;i++){ if(n>=thr[i]) t=i+1; } return t; }
 function tierFromRank(thr, rank){ if(!rank) return 0; if(rank<=thr[2]) return 3; if(rank<=thr[1]) return 2; if(rank<=thr[0]) return 1; return 0; }
