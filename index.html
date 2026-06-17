@@ -288,6 +288,10 @@
   .avatar-lg{width:48px; height:48px; border-radius:50%; flex:0 0 auto; background:var(--panel2) center/cover no-repeat;
     display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px;}
   .pm-name{font-size:17px; font-weight:700;}
+  .pm-legal{display:flex; gap:18px; justify-content:center; margin-top:16px; padding-top:12px; border-top:1px solid var(--line); font-size:13px;}
+  .pm-legal a{color:var(--muted); text-decoration:none; cursor:pointer;}
+  .pm-legal a:hover{color:var(--ink);}
+  .pm-legal .danger-link{color:var(--pay); margin-left:auto;}
   .theme-pick{display:flex; gap:10px;}
   .theme-pick{flex-wrap:wrap;}
   .theme-opt{flex:1 1 30%; min-width:90px; display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--line);
@@ -408,6 +412,11 @@
     <div class="row" style="margin-top:10px;">
       <button class="btn ghost" onclick="shareApp()">分享 App</button>
       <button class="btn ghost" onclick="closeProfile()">關閉</button>
+    </div>
+    <div class="pm-legal">
+      <a href="privacy.html" target="_blank" rel="noopener">隱私政策</a>
+      <a href="terms.html" target="_blank" rel="noopener">服務條款</a>
+      <a onclick="deleteAccount()" class="danger-link">刪除帳號</a>
     </div>
   </div>
 </div>
@@ -797,6 +806,7 @@ const Store = {
     return rowToGathering(row);
   },
   async remove(id){ await rpc("g_delete", { p_id:id, p_access_token: ACCESS_TOKEN }); },
+  async deleteAccount(){ await rpc("g_delete_account", { p_access_token: ACCESS_TOKEN }); },
   async getOrder(){ const {data,error}=await sb.rpc("g_get_prefs",{p_access_token:ACCESS_TOKEN}); if(error) throw error; return Array.isArray(data)?data:[]; }, // 跨裝置排序（回 jsonb 陣列，不可用 rpc() 解包）
   async setOrder(ids){ await rpc("g_set_order", { p_access_token: ACCESS_TOKEN, p_order: ids }); },
   async recordReferral(inviter){ await rpc("g_record_referral", { p_access_token: ACCESS_TOKEN, p_inviter: inviter }); },
@@ -1000,6 +1010,21 @@ async function saveProfile(){
   renderAvatar();
   closeProfile();
   toast("已儲存個人設定");
+}
+async function deleteAccount(){
+  if(!CLOUD || !ACCESS_TOKEN){ toast("需要登入才能刪除帳號"); return; }
+  const ok = await uiConfirm(
+    "刪除帳號將永久移除：你的 LINE 連結、頭像、收款資訊、邀請與徽章紀錄、排序設定。\n\n你建立或參與的帳本會保留（避免影響其他人的分帳），但你在裡面會被改成「已刪除的成員」。\n\n此動作無法復原。",
+    {danger:true, ok:"我要刪除帳號"});
+  if(!ok) return;
+  const typed = await uiPrompt('請輸入「刪除」兩個字以確認：', '');
+  if((typed||'').trim() !== '刪除'){ toast("已取消"); return; }
+  try{ await Store.deleteAccount(); }
+  catch(e){ console.error(e); toast("刪除失敗，請稍後再試"); return; }
+  try{ Object.keys(localStorage).filter(k=>k.indexOf('aa_')===0).forEach(k=>localStorage.removeItem(k)); }catch(e){}
+  try{ if(window.liff && liff.logout) liff.logout(); }catch(e){}
+  toast("帳號已刪除");
+  setTimeout(()=>{ try{ location.replace(location.pathname); }catch(e){ location.reload(); } }, 1200);
 }
 let view = "list";          // list | edit | result
 let current = null;         // 編輯中的聚會
