@@ -416,6 +416,9 @@
   #profileModal .btn.block{padding:11px;}
   #profileModal .row{margin-top:8px !important;}
   #profileModal .pm-legal{margin-top:11px; padding-top:9px;}
+  /* 已結清唯讀橫幅 */
+  .locked-bar{display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--accent-soft); border:1px solid var(--accent-bd); color:var(--ink); border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:13.5px; font-weight:600;}
+  .locked-bar button{background:var(--accent); color:var(--on-accent); border:none; border-radius:9px; padding:7px 13px; font-weight:700; cursor:pointer; white-space:nowrap;}
   .topgap{margin-top:6px;}
   hr.sep{border:0; border-top:1px solid var(--line); margin:16px 0;}
 </style>
@@ -1103,6 +1106,7 @@ async function deleteAccount(){
 }
 let view = "list";          // list | edit | result
 let current = null;         // 編輯中的聚會
+let _locked = false;        // 已結清的帳本預設唯讀，按「重新開啟」才解鎖編輯
 let editDraftItem = null;   // 正在新增/編輯的項目
 let _coverAdjust = false;   // 封面調整位置模式
 let _myStats = null;        // 個人成就統計（Store.list 算出）
@@ -1161,6 +1165,7 @@ function _uiCancel(){ _uiClose(_uiMode==='prompt' ? null : false); }
 async function renderList(){
   view = "list";
   current = null;
+  _locked = false;
   unsubscribeRealtime();
   hideSyncBanner();
   $("#title").textContent = "欸，算一下！";
@@ -1422,8 +1427,10 @@ async function openGathering(id){
   if(applyProfileToCurrent()) persistCurrent();
   await loadMemberBadges(current.id);
   subscribeRealtime(current.id);
-  renderEdit(false);
+  _locked = rowSettled(current);   // 已結清→先進唯讀結果頁，要按「重新開啟」才編輯
+  if(_locked) renderResult(); else renderEdit(false);
 }
+function reopenForEdit(){ _locked = false; renderEdit(false); toast("已重新開啟，可以編輯了"); }
 
 /* 成員頭像名冊（帳本內臨場感）+ 點頭像看 profile */
 const AV_COLORS = ['#4a90d9','#e0813a','#e67ba8','#4f8f5a','#9b6fd4','#3aa6a6','#d9694a','#c79a3a'];
@@ -2395,6 +2402,7 @@ function goResult(){
 }
 function renderResult(){
   view = "result";
+  const lock = _locked;   // 唯讀：已結清且還沒「重新開啟」
   $("#title").textContent = "分帳結果";
   $("#backBtn").classList.remove("hidden");
   $("#brandIcon").classList.add("hidden");
@@ -2430,8 +2438,8 @@ function renderResult(){
         const iAmPayee = MY_UID && toM && toM.uid===MY_UID;
         // 本人才能動：付款人標「已付」、收款人「確認收到」；
         // 當事人若是「沒綁 LINE 的預設名字」（本人不在 App），只有「建立這本帳的人」能代記
-        const canMarkPaid = iAmPayer || (fromM && !fromM.uid && iAmOwner());
-        const canConfirm  = iAmPayee || (toM && !toM.uid && iAmOwner());
+        const canMarkPaid = !lock && (iAmPayer || (fromM && !fromM.uid && iAmOwner()));
+        const canConfirm  = !lock && (iAmPayee || (toM && !toM.uid && iAmOwner()));
         const stateCls = st.confirmed ? 'paid' : (st.paid ? 'pending' : '');
         const copyBtn = pay ? `<button class="copyacct iconbtn-sm" onclick="copyPay('${t.to}')" aria-label="複製收款帳號" title="複製收款帳號">${ICONS.copy}</button>` : '';
         let topBtn;
@@ -2469,6 +2477,7 @@ function renderResult(){
     : `<div class="verify bad">⚠ 驗算未通過，請檢查輸入</div>`;
 
   $("#main").innerHTML = `
+    ${lock ? `<div class="locked-bar"><span>✓ 這本已結清・唯讀</span><button onclick="reopenForEdit()">重新開啟編輯</button></div>` : ''}
     <div id="resultCard">
       <div class="rc-head">
         <div>
@@ -2507,7 +2516,7 @@ function renderResult(){
       <button class="btn line" id="shareBtn" onclick="shareToLine()">分享到 LINE</button>
     </div>
     <div class="spacer"></div>
-    <button class="btn ghost block" onclick="renderEdit(false)">← 回去改項目</button>
+    ${lock ? `<button class="btn block" onclick="reopenForEdit()">重新開啟以編輯</button>` : `<button class="btn ghost block" onclick="renderEdit(false)">← 回去改項目</button>`}
   `;
   if(!inLineClient){ const b=$("#shareBtn"); b.textContent="系統分享"; }
 }
