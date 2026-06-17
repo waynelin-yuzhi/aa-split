@@ -388,8 +388,26 @@
       <button class="btn" onclick="mmAdd()">加入</button>
     </div>
     <div class="faint" style="margin-top:8px;">點名字可改名、✕ 可移除。想找朋友用 LINE 一起記，回上一頁按「邀請」。</div>
+    <button class="btn ghost block" onclick="openMergeModal()" style="margin-top:10px;">合併重複的人</button>
+    <div class="faint" style="margin-top:6px;">同一人不小心出現兩筆（例如加入後沒認領）時，用這個併起來。</div>
     <div class="spacer"></div>
     <button class="btn ghost block" onclick="closeMembers()">完成</button>
+  </div>
+</div>
+
+<div id="mergeModal" class="modal hidden">
+  <div class="modal-card" style="max-width:360px;">
+    <div class="pm-name" style="margin-bottom:4px;">合併重複的人</div>
+    <div class="faint" style="margin-bottom:14px;">同一個人不小心出現兩筆時用。所有帳、轉帳、結清都會轉到保留的那位，分帳數字不變。</div>
+    <label class="fld"><span>要移除的（重複那筆）</span>
+      <select id="mergeDrop" onchange="updateMergeHint()"></select></label>
+    <label class="fld"><span>保留這位（合併到他）</span>
+      <select id="mergeKeep" onchange="updateMergeHint()"></select></label>
+    <div class="faint" id="mergeHint" style="margin:-4px 2px 14px;"></div>
+    <div class="row">
+      <button class="btn ghost" onclick="closeMerge()">取消</button>
+      <button class="btn" onclick="confirmMerge()">合併</button>
+    </div>
   </div>
 </div>
 
@@ -1550,6 +1568,74 @@ function refreshMembersUI(){
   if(view==="edit") renderEdit(false);
   if(!$("#membersModal").classList.contains("hidden")) renderMembersModal();
 }
+// 合併重複成員：把 drop 的所有帳/轉帳/結清/分攤指向改到 keep，保留有 LINE 身分那筆，分帳數字不變
+function mergeMembers(keepId, dropId){
+  if(!current || keepId===dropId) return;
+  const keep = current.members.find(m=>m.id===keepId), drop = current.members.find(m=>m.id===dropId);
+  if(!keep || !drop) return;
+  for(const it of (current.items||[])){
+    if(it.payerId===dropId) it.payerId = keepId;
+    if(Array.isArray(it.sharerIds) && it.sharerIds.includes(dropId)){
+      it.sharerIds = it.sharerIds.filter(id=>id!==dropId);
+      if(!it.sharerIds.includes(keepId)) it.sharerIds.push(keepId);
+    }
+    if(it.split && it.split.values && it.split.values[dropId]!=null){
+      it.split.values[keepId] = (Number(it.split.values[keepId])||0) + Number(it.split.values[dropId]);
+      delete it.split.values[dropId];
+    }
+  }
+  current.transfers = (current.transfers||[])
+    .map(t=>({ ...t, from: t.from===dropId?keepId:t.from, to: t.to===dropId?keepId:t.to }))
+    .filter(t=>t.from!==t.to);
+  const sm = settleMap(), ns = {};
+  for(const k in sm){ let [f,t]=k.split(">"); if(f===dropId)f=keepId; if(t===dropId)t=keepId; if(f===t) continue;
+    const nk=f+">"+t, cur=ns[nk]||{paid:false,confirmed:false};
+    ns[nk]={paid:cur.paid||sm[k].paid, confirmed:cur.confirmed||sm[k].confirmed};
+  }
+  current.settlements = ns;
+  ['uid','pic','payInfo'].forEach(f=>{ if(!keep[f] && drop[f]) keep[f]=drop[f]; });
+  try{ if(current.id && localStorage.getItem("aa_me_"+current.id)===dropId) localStorage.setItem("aa_me_"+current.id, keepId); }catch(e){}
+  current.members = current.members.filter(m=>m.id!==dropId);
+  logHistory(`合併成員：「${drop.name}」併入「${keep.name}」`);
+}
+function openMergeModal(){
+  const m = current.members||[];
+  if(m.length<2){ toast("至少要兩位成員才需要合併"); return; }
+  // 預設挑「最可能的重複對」：名字相近、且一筆有 LINE 一筆沒有 → 移除預設那筆、保留 LINE 那筆
+  let dropDef=null, keepDef=null;
+  outer: for(const a of m){ for(const b of m){
+    if(a.id===b.id || (!a.uid)===(!b.uid)) continue;
+    const na=(a.name||"").toLowerCase().trim(), nb=(b.name||"").toLowerCase().trim();
+    if(na && nb && (na.includes(nb)||nb.includes(na))){
+      const noU=a.uid?b:a, hasU=a.uid?a:b; dropDef=noU.id; keepDef=hasU.id; break outer;
+    }
+  }}
+  if(!dropDef){ dropDef=m[0].id; keepDef=m[1].id; }
+  const opt = sel => m.map(p=>`<option value="${p.id}" ${sel===p.id?"selected":""}>${esc(p.name)}${p.uid?"（LINE）":"（預設）"}</option>`).join("");
+  $("#mergeDrop").innerHTML = opt(dropDef);
+  $("#mergeKeep").innerHTML = opt(keepDef);
+  updateMergeHint();
+  $("#mergeModal").classList.remove("hidden");
+}
+function _memLabel(mm){ return mm ? `${mm.name}${mm.uid?"（LINE）":"（預設）"}` : ""; }
+function updateMergeHint(){
+  const d=$("#mergeDrop").value, k=$("#mergeKeep").value;
+  const dm=current.members.find(m=>m.id===d), km=current.members.find(m=>m.id===k), h=$("#mergeHint");
+  if(d===k){ h.textContent="⚠️ 兩邊不能選同一人"; return; }
+  h.textContent = `會把「${_memLabel(dm)}」的所有帳轉到「${_memLabel(km)}」，然後移除「${_memLabel(dm)}」。`;
+}
+function closeMerge(){ $("#mergeModal").classList.add("hidden"); }
+async function confirmMerge(){
+  const dropId=$("#mergeDrop").value, keepId=$("#mergeKeep").value;
+  if(dropId===keepId){ toast("兩邊不能是同一人"); return; }
+  const dm=current.members.find(m=>m.id===dropId), km=current.members.find(m=>m.id===keepId);
+  if(!await uiConfirm(`把「${_memLabel(dm)}」併入「${_memLabel(km)}」？\n所有帳會轉到「${_memLabel(km)}」、並移除「${_memLabel(dm)}」。`, {danger:true})) return;
+  mergeMembers(keepId, dropId);
+  persistCurrent();
+  closeMerge(); renderMembersModal();
+  if(view==="edit") renderEdit(false);
+  toast("已合併");
+}
 /* 金額簡易計算機 */
 let _calc = "";
 function openCalc(){
@@ -2235,8 +2321,18 @@ function showJoinPrompt(g, token){
   const tot = grandTotal(g.items, g.adjustments);
   // host 預建、還沒人認領的名字 → 讓我先認領（避免重複）
   const unclaimed = (g.members||[]).filter(m=>!m.uid);
+  // 若我的 LINE 名字接近某個預設名字 → 主動提示認領，降低一開始就漏認領
+  const myn = (MY_NAME||"").toLowerCase().trim();
+  const guess = myn ? unclaimed.find(m=>{ const n=(m.name||"").toLowerCase().trim(); return n && (myn.includes(n)||n.includes(myn)); }) : null;
+  const guessBanner = guess ? `
+    <div class="card" style="border-color:var(--accent);background:var(--accent-soft);text-align:center;">
+      <div style="font-weight:700;">你是不是「${esc(guess.name)}」？</div>
+      <div class="faint" style="margin:5px 0 12px;">認領後，你之前被分到的帳會跟著你的 LINE 身分。</div>
+      <button class="btn" onclick="claimMember('${guess.id}')">是，我就是 ${esc(guess.name)}</button>
+    </div>` : "";
   const joinSection = unclaimed.length ? `
-    <div class="sect-title" style="margin:20px 2px 8px;">你是哪一位？</div>
+    ${guessBanner}
+    <div class="sect-title" style="margin:20px 2px 8px;">${guess?"不是的話，你是哪一位？":"你是哪一位？"}</div>
     <div class="faint" style="margin:0 2px 12px;">在名單裡找到自己就點它認領；不在名單就用你的 LINE 名字加入。</div>
     <div class="chips">
       ${unclaimed.map(m=>`<span class="chip claimchip" onclick="claimMember('${m.id}')">${esc(m.name)}</span>`).join("")}
