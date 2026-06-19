@@ -26,6 +26,7 @@
 - **`03-backend.md`** — Supabase：RLS、`g_*` RPC 與權限模型、migration 流程、Edge Function、Storage、限流、內容審核、非破壞慣例。
 - **`04-frontend-style.md`** — 前端架構、XSS 安全、UI 元件慣例、色彩變數與主題、品牌語氣、命名、範例帳本/引導維護。
 - **`05-process.md`** — 工作流程：開工前、前後端改動驗證、部署、版本/更新紀錄、快取、LINE 真機測試清單、上線安全清單。
+- **`06-line-oa.md`** — 官方帳號：圖文選單（已上線、`?go=` 入口、底圖產生器）、設定指令走 `line-oa-richmenu` skill、下一步群組綁定/推播（webhook 走 Edge Function）。
 
 ## 公開識別值（非機密，前端本來就有）
 
