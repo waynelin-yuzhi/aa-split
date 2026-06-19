@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>圖文選單底圖產生器 — 欸，算一下！</title>
+<style>
+  body{margin:0;background:#15181f;color:#e8eaed;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;text-align:center;padding:24px;}
+  h1{font-size:18px;font-weight:500;}
+  p{color:#9aa1ad;font-size:14px;line-height:1.6;}
+  #preview{width:100%;max-width:760px;border-radius:12px;box-shadow:0 6px 30px rgba(0,0,0,.4);}
+  button{margin-top:16px;font-size:16px;font-weight:600;padding:12px 26px;background:#2bbfa0;color:#0f1115;border:none;border-radius:12px;cursor:pointer;}
+  code{background:#222833;padding:2px 6px;border-radius:5px;font-size:13px;}
+</style>
+</head>
+<body>
+  <h1>「欸，算一下！」官方帳號圖文選單底圖</h1>
+  <p>2500 × 843（LINE 精簡選單尺寸）· 用 App 同款薄荷線條圖示<br>下面是預覽，按按鈕下載 <code>richmenu.png</code>，再照指令上傳。</p>
+  <canvas id="cv" width="2500" height="843" style="display:none"></canvas>
+  <img id="preview" alt="圖文選單預覽">
+  <br>
+  <button id="dl">⬇︎ 下載 richmenu.png</button>
+<script>
+const MINT = '#4fd1b5';
+function icon(inner){
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 24 24" fill="none" stroke="${MINT}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+}
+const ICONS = {
+  // 開始分帳：收據格子（與 App 的 calc 同款）
+  calc: icon('<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><line x1="8.5" y1="6.8" x2="15.5" y2="6.8"/><circle cx="9.2" cy="11.5" r="1.1" fill="'+MINT+'" stroke="none"/><circle cx="14.8" cy="11.5" r="1.1" fill="'+MINT+'" stroke="none"/><circle cx="9.2" cy="16.2" r="1.1" fill="'+MINT+'" stroke="none"/><circle cx="14.8" cy="16.2" r="1.1" fill="'+MINT+'" stroke="none"/>'),
+  // 我的帳本：清單文件（同款線條風）
+  list: icon('<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>'),
+  // 揪朋友：加人（與 App 的 invite 同款）
+  invite: icon('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3 2.4-5 5.5-5s5.5 2 5.5 5"/><line x1="18.5" y1="6.5" x2="18.5" y2="12.5"/><line x1="15.5" y1="9.5" x2="21.5" y2="9.5"/>'),
+};
+const ZONES = [
+  { cx:416,  key:'calc',   label:'開始分帳' },
+  { cx:1250, key:'list',   label:'我的帳本' },
+  { cx:2084, key:'invite', label:'揪朋友'   },
+];
+function load(svg){ return new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.src='data:image/svg+xml;utf8,'+encodeURIComponent(svg); }); }
+(async()=>{
+  const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  // 背景
+  const g=ctx.createLinearGradient(0,0,0,843); g.addColorStop(0,'#161a22'); g.addColorStop(1,'#0f1115');
+  ctx.fillStyle=g; ctx.fillRect(0,0,2500,843);
+  // 頂部薄荷線
+  ctx.fillStyle=MINT; ctx.fillRect(0,0,2500,9);
+  // 分隔線
+  ctx.strokeStyle='rgba(255,255,255,.07)'; ctx.lineWidth=2;
+  [833,1667].forEach(x=>{ ctx.beginPath(); ctx.moveTo(x,90); ctx.lineTo(x,753); ctx.stroke(); });
+  // 各格
+  const imgs = await Promise.all(ZONES.map(z=>load(ICONS[z.key])));
+  ZONES.forEach((z,i)=>{
+    ctx.beginPath(); ctx.arc(z.cx,330,150,0,Math.PI*2);
+    ctx.fillStyle='rgba(43,191,160,.12)'; ctx.fill();
+    ctx.drawImage(imgs[i], z.cx-110, 330-110, 220, 220);
+    ctx.fillStyle='#eaf2ee'; ctx.textAlign='center'; ctx.font='600 64px -apple-system,"PingFang TC","Noto Sans TC",sans-serif';
+    ctx.fillText(z.label, z.cx, 615);
+  });
+  document.getElementById('preview').src = cv.toDataURL('image/png');
+  document.getElementById('dl').onclick=()=>{
+    cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='richmenu.png'; a.click(); }, 'image/png');
+  };
+})();
+</script>
+</body>
+</html>

@@ -2924,10 +2924,16 @@ async function boot(){
   const gid = qp.get("g") || hp.get("g");
   const tok = qp.get("t") || hp.get("t");
   const by  = qp.get("by") || hp.get("by");   // 邀請歸因：誰揪我來的
+  const go  = qp.get("go") || hp.get("go");   // 圖文選單入口：new=開新分帳 / list=列表 / share=揪朋友
   // 讀完參數立刻把網址清乾淨：網址列不再殘留 ?g=...，避免之後複製網址列誤把某帳本當「App 連結」分享出去
   if(location.search || location.hash) history.replaceState(null, "", location.pathname);
   if(by && by!==MY_UID){ try{ await Store.recordReferral(by); }catch(e){ console.error(e); } }
   try{ _myBadges = await Store.getBadges(); }catch(e){ console.error(e); }
+  if(go && !gid){   // 從官方帳號圖文選單點進來：直接落到對應動作（優先於首次引導）
+    if(go==='new'){ newGathering(); return; }
+    if(go==='share'){ renderList(); setTimeout(()=>{ try{ shareApp(); }catch(e){} }, 350); return; }
+    if(go==='list'){ renderList(); return; }
+  }
   if(!localStorage.getItem('aa_onboarded') && !gid){   // 首次進來：先用範例帳本跑一次新手引導，結束再進自己的列表
     enterDemo();
     startOnboarding(function(){ exitDemo(); try{ localStorage.setItem('aa_onboarded','1'); }catch(e){} renderList(); });
