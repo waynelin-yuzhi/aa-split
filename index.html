@@ -562,7 +562,7 @@
     <div class="modal-head"><div><div class="pm-name">公告與更新</div><div class="faint" id="clVer"></div></div></div>
     <div id="changelogBody"></div>
     <div class="row" style="margin-top:12px;">
-      <button class="btn ghost" onclick="addOfficialLine()">💬 加入官方帳號</button>
+      <button class="btn ghost" onclick="addOfficialLine()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2.5px;margin-right:5px"><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/><path d="M8 9.5h8"/><path d="M8 13h5"/></svg>加入官方帳號</button>
       <button class="btn ghost" onclick="reportBug()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2.5px;margin-right:5px"><path d="M9 9v-1a3 3 0 0 1 6 0v1"/><path d="M8 9h8a6 6 0 0 1 1 3v3a5 5 0 0 1-10 0v-3a6 6 0 0 1 1-3"/><line x1="3" y1="13" x2="7" y2="13"/><line x1="17" y1="13" x2="21" y2="13"/><line x1="12" y1="20" x2="12" y2="14"/><path d="M4 19l3.35-2"/><path d="M20 19l-3.35-2"/><path d="M4 7l3.75 2.4"/><path d="M20 7l-3.75 2.4"/></svg>回報問題</button>
     </div>
     <div class="spacer"></div>
@@ -1216,9 +1216,9 @@ async function renderList(){
       <div class="hero-foot">
         ${badges.length
           ? `<div class="hero-badges" onclick="openBadgeGuide()" style="cursor:pointer">${badges.map(b=>`<span class="badge" title="${esc(b.label+'：'+b.desc)}"><span class="badge-ic">${b.icon}</span></span>`).join('')}</div>`
-          : `<button class="hero-invite" onclick="openBadgeGuide()">🏅 看有哪些徽章</button>`}
-        <button class="hero-invite" onclick="shareApp()">🎁 揪朋友${inv?` ·已揪 ${inv}`:''}</button>
-        <button class="hero-invite" onclick="addOfficialLine()">💬 官方帳號</button>
+          : `<button class="hero-invite" onclick="openBadgeGuide()">${MEDAL_SVG}看有哪些徽章</button>`}
+        <button class="hero-invite" onclick="shareApp()">${GIFT_SVG}揪朋友${inv?` ·已揪 ${inv}`:''}</button>
+        <button class="hero-invite" onclick="addOfficialLine()">${CHAT_SVG}官方帳號</button>
       </div>
     </div>` : '';
   const active = ordered.filter(g=>!g.settled), settled = ordered.filter(g=>g.settled);
@@ -1237,8 +1237,11 @@ async function renderList(){
   document.querySelectorAll('.hs-num').forEach(el=>countUp(el, Number(el.dataset.count)||0, el.dataset.money==='1'));
 }
 const GRIP_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="5" cy="4" r="1.3"/><circle cx="11" cy="4" r="1.3"/><circle cx="5" cy="8" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg>`;
-// 自繪小芽（人在用），與 quickbar 線條圖示同風格
+// 自繪小圖示（人在用/揪朋友/官方帳號/徽章），與 quickbar 線條圖示同風格；currentColor 繼承按鈕色
 const SPROUT_SVG = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1.5px;margin-right:3px"><path d="M12 21v-7"/><path d="M12 14C12 9.8 9.2 7 5.5 7c0 4.2 2.8 7 6.5 7z"/><path d="M12 12c0-3.3 2.3-5.8 5.5-5.8 0 3.3-2.3 5.8-5.5 5.8z"/></svg>`;
+const GIFT_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><rect x="3.5" y="8" width="17" height="4" rx="1"/><line x1="12" y1="8" x2="12" y2="21"/><path d="M18.5 12v7a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg>`;
+const CHAT_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/><path d="M8 9.5h8"/><path d="M8 13h5"/></svg>`;
+const MEDAL_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="9" r="5.5"/><path d="M9 13.5L8 21l4-2 4 2-1-7.5"/></svg>`;
 function listRowHTML(g, settled){
   const lc = parseCover(g.cover);
   const coverStyle = lc ? ` style="background-image:linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.62)), url('${lc.url}'); background-size:cover; background-position:center, center ${lc.pos}%;"` : '';
