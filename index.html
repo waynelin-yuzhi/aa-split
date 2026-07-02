@@ -808,7 +808,7 @@ async function rpcRows(name, args){
 function rowSettled(r){
   const items = r.items||[], adjustments = r.adjustments||[];
   if(!(grandTotal(items, adjustments) > 0)) return false;
-  const members = (r.participants||[]).map(p=>({id:p.id, name:p.name}));
+  const members = (r.participants||r.members||[]).map(p=>({id:p.id, name:p.name}));   // DB row 用 participants、前端物件用 members，兩種都認
   const res = computeSplit(members, items, adjustments, r.transfers||[]);
   if(res.transfers.length === 0) return true;   // 打平/已喬平
   const sm = normSettle(r.settlements);
@@ -2750,8 +2750,10 @@ function declineJoin(){ _invite=null; history.replaceState(null,"",location.path
  * 啟動：LINE 登入（必須）→ 邀請連結 #g&t（成員直接開／非成員問加入）→ 否則我的列表
  * ========================================================================= */
 /* ===================== 版本號 + 更新紀錄公布欄 ===================== */
-const APP_VERSION = 'v1.0.1';
+const APP_VERSION = 'v1.0.2';
 const CHANGELOG = [
+  { v:'v1.0.2', d:'2026/06/23', items:[
+    '修正：帳本才剛開始就被誤判成「已結清・唯讀」的問題' ]},
   { v:'v1.0.1', d:'2026/06/18', items:[
     '已結清的帳本預設唯讀，要按「重新開啟」才能編輯',
     '新手引導說明框、個人設定頁面的版面優化' ]},
