@@ -13,6 +13,10 @@
 - 不要 `eval` / `new Function` / `javascript:` / 未跳脫的 `innerHTML` 插使用者輸入 / 未驗證的 `href=${url}`。
 - 屬性內的 id/uid 都是 `uid()` 產生的 base36 或 server uuid（無引號可破），attribute 注入不成立；新加屬性插值仍以 esc 為準。
 
+## 圖示
+- **全部自繪**、不用 emoji 當功能鍵：quickbar `ICONS`、`GRIP/SPROUT/GIFT/CHAT/MEDAL_SVG`、品項分類 `CATS[].icon`、預設頭像 `PRESET_AVATARS`、徽章 `badgeSvg()` 合成。線條風格＝stroke currentColor（繼承按鈕色）、寬 1.7–2、圓角端點。
+- **單一真相＝index.html 內嵌字串**；設計歸檔（獨立 .svg，33 個+品牌 logo）在 Drive `13 數位工具/03_軟體專屬原始檔 (Assets)/欸，算一下 App/`。**新增/修改圖示後要同步重新歸檔**（有抽取腳本可重跑，見該資料夾 README）。
+
 ## UI 元件慣例
 - **modal**：`.modal` + `.modal-card`（深色卡、圓角、max-height:90vh）。
 - **編輯頁**：摘要卡（標題/日期/人數/總額/封面）→ 成員頭像名冊 `.members-strip` → quickbar（成員/邀請/算分帳）→ 帳目卡 → 轉帳卡 → 大「算分帳」CTA → 右下 `.fab`（新增帳目）。
