@@ -404,8 +404,6 @@
   .an-t{font-size:14px; font-weight:700;}
   .an-d{font-size:11.5px; color:var(--muted); margin-left:8px;}
   .an-b{font-size:12.5px; color:var(--muted); margin-top:3px; line-height:1.6;}
-  .hero-social{text-align:center; font-size:12.5px; color:var(--muted); margin-top:10px;}
-  .hero-social span{color:var(--accent); font-weight:700;}
   /* 個人設定：緊湊但留呼吸（單行頭像、上下留白）*/
   #profileModal .modal-card{padding:20px 16px 18px;}
   #profileModal .modal-head{margin-bottom:14px;}
@@ -1209,6 +1207,7 @@ async function renderList(){
   const hero = st.items>0 ? `
     <div class="hero">
       <div class="hero-stats">
+        ${uc>0 ? `<div class="hs"><span class="hs-num" data-count="${uc}">0</span><span class="hs-lab">${SPROUT_SVG}人在用</span></div>` : ''}
         <div class="hs"><span class="hs-num" data-count="${st.items}">0</span><span class="hs-lab">筆帳</span></div>
         <div class="hs"><span class="hs-num" data-count="${st.friends}">0</span><span class="hs-lab">朋友</span></div>
         <div class="hs"><span class="hs-num" data-count="${st.settled||0}">0</span><span class="hs-lab">結清</span></div>
@@ -1221,7 +1220,6 @@ async function renderList(){
         <button class="hero-invite" onclick="shareApp()">🎁 揪朋友${inv?` ·已揪 ${inv}`:''}</button>
         <button class="hero-invite" onclick="addOfficialLine()">💬 官方帳號</button>
       </div>
-      ${uc>0 ? `<div class="hero-social">🌱 已有 <span id="heroUsers" data-count="${uc}">0</span> 人一起「算一下」</div>` : ''}
     </div>` : '';
   const active = ordered.filter(g=>!g.settled), settled = ordered.filter(g=>g.settled);
   $("#main").innerHTML = hero
@@ -1237,9 +1235,10 @@ async function renderList(){
     + `<div style="height:84px;"></div><button class="fab-center" onclick="newGathering()" aria-label="新增分帳">＋</button>`;
   enableListDrag();
   document.querySelectorAll('.hs-num').forEach(el=>countUp(el, Number(el.dataset.count)||0, el.dataset.money==='1'));
-  const hu = $("#heroUsers"); if(hu) countUp(hu, Number(hu.dataset.count)||0);
 }
 const GRIP_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="5" cy="4" r="1.3"/><circle cx="11" cy="4" r="1.3"/><circle cx="5" cy="8" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg>`;
+// 自繪小芽（人在用），與 quickbar 線條圖示同風格
+const SPROUT_SVG = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1.5px;margin-right:3px"><path d="M12 21v-7"/><path d="M12 14C12 9.8 9.2 7 5.5 7c0 4.2 2.8 7 6.5 7z"/><path d="M12 12c0-3.3 2.3-5.8 5.5-5.8 0 3.3-2.3 5.8-5.5 5.8z"/></svg>`;
 function listRowHTML(g, settled){
   const lc = parseCover(g.cover);
   const coverStyle = lc ? ` style="background-image:linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.62)), url('${lc.url}'); background-size:cover; background-position:center, center ${lc.pos}%;"` : '';
